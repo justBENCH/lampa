@@ -1,8 +1,8 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.0.6';
-    var BUILD = '2026-09-20-18-10';
+    var VERSION = '1.0.7';
+    var BUILD = '2026-09-20-18-25';
     var PLUGIN = 'kp_recommendations_test';
 
     console.log('[KP UI] ========================================');
@@ -20,7 +20,7 @@
     };
 
     var KP_SOURCE_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=106';
+        'https://nb557.github.io/plugins/kp_source.js?v=107';
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
@@ -163,19 +163,242 @@
         };
     }
 
-    /*
-     * Ищем именно KP ID.
-     * Никакие обычные id / tmdb id не принимаем.
-     */
-    function findKpId(object, path, visited) {
+    function getValue(object, names) {
         if (
-            object === null ||
-            object === undefined
+            !object ||
+            typeof object !== 'object'
         ) {
             return null;
         }
 
+        for (
+            var i = 0;
+            i < names.length;
+            i++
+        ) {
+            var value;
+
+            try {
+                value =
+                    object[names[i]];
+            } catch (e) {
+                continue;
+            }
+
+            if (
+                value !== null &&
+                value !== undefined &&
+                String(value) !== ''
+            ) {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    /*
+     * Ищем TMDB ID и уже готовый KP ID
+     * в реальном объекте Lampa.
+     */
+    function extractIds(event) {
+        var objects = [
+            event &&
+                event.object &&
+                event.object.card,
+
+            event &&
+                event.object &&
+                event.object.movie,
+
+            event &&
+                event.object,
+
+            event &&
+                event.link
+        ];
+
+        var result = {
+            tmdb: null,
+            kp: null,
+            imdb: null
+        };
+
+        for (
+            var i = 0;
+            i < objects.length;
+            i++
+        ) {
+            var object =
+                objects[i];
+
+            if (!object) {
+                continue;
+            }
+
+            if (!result.kp) {
+                result.kp =
+                    getValue(
+                        object,
+                        [
+                            'kinopoisk_id',
+                            'kinopoiskId',
+                            'kp_id',
+                            'kpId'
+                        ]
+                    );
+            }
+
+            if (!result.tmdb) {
+                result.tmdb =
+                    getValue(
+                        object,
+                        [
+                            'tmdb_id',
+                            'tmdbId',
+                            'id_tmdb',
+                            'tmdb'
+                        ]
+                    );
+            }
+
+            if (!result.imdb) {
+                result.imdb =
+                    getValue(
+                        object,
+                        [
+                            'imdb_id',
+                            'imdbId'
+                        ]
+                    );
+            }
+        }
+
+        return result;
+    }
+
+    /*
+     * Пробуем получить TMDB full через уже
+     * подключённый Lampa TMDB source.
+     *
+     * В разных версиях Lampa сигнатура может
+     * немного отличаться, поэтому пробуем
+     * несколько вариантов.
+     */
+    function getTMDBData(tmdbId, callback) {
+        var tmdb =
+            Lampa.Api &&
+            Lampa.Api.sources &&
+            Lampa.Api.sources.tmdb;
+
+        if (!tmdb) {
+            log(
+                'TMDB source unavailable'
+            );
+
+            callback(null);
+            return;
+        }
+
+        log(
+            'TMDB SOURCE:',
+            tmdb
+        );
+
         if (
+            typeof tmdb.full === 'function'
+        ) {
+            log(
+                'Calling TMDB.full(...)'
+            );
+
+            try {
+                tmdb.full(
+                    {
+                        card: {
+                            source: 'tmdb',
+                            id: tmdbId,
+                            tmdb_id: tmdbId
+                        }
+                    },
+                    function (json) {
+                        log(
+                            'TMDB FULL RESPONSE:',
+                            json
+                        );
+
+                        callback(json);
+                    },
+                    function (error) {
+                        log(
+                            'TMDB FULL ERROR:',
+                            error
+                        );
+
+                        callback(null);
+                    }
+                );
+
+                return;
+            } catch (error) {
+                log(
+                    'TMDB.full EXCEPTION:',
+                    error
+                );
+            }
+        }
+
+        if (
+            typeof tmdb.get === 'function'
+        ) {
+            log(
+                'Calling TMDB.get(...)'
+            );
+
+            try {
+                tmdb.get(
+                    tmdbId,
+                    function (json) {
+                        log(
+                            'TMDB GET RESPONSE:',
+                            json
+                        );
+
+                        callback(json);
+                    },
+                    function (error) {
+                        log(
+                            'TMDB.get ERROR:',
+                            error
+                        );
+
+                        callback(null);
+                    }
+                );
+
+                return;
+            } catch (error2) {
+                log(
+                    'TMDB.get EXCEPTION:',
+                    error2
+                );
+            }
+        }
+
+        log(
+            'No usable TMDB method'
+        );
+
+        callback(null);
+    }
+
+    /*
+     * Рекурсивно ищем KP ID в ответе TMDB.
+     */
+    function findKpId(object, path, visited) {
+        if (
+            object === null ||
+            object === undefined ||
             typeof object !== 'object'
         ) {
             return null;
@@ -210,6 +433,9 @@
             var key =
                 keys[i];
 
+            var lower =
+                key.toLowerCase();
+
             var value;
 
             try {
@@ -218,9 +444,6 @@
             } catch (e2) {
                 continue;
             }
-
-            var lower =
-                key.toLowerCase();
 
             if (
                 lower === 'kinopoisk_id' ||
@@ -234,7 +457,7 @@
                     String(value) !== ''
                 ) {
                     log(
-                        'FOUND KP ID:',
+                        'KP ID FOUND:',
                         value,
                         'PATH:',
                         path + '.' + key
@@ -269,55 +492,19 @@
                 continue;
             }
 
-            var result =
+            var found =
                 findKpId(
                     value2,
                     path + '.' + key2,
                     visited
                 );
 
-            if (result) {
-                return result;
+            if (found) {
+                return found;
             }
         }
 
         return null;
-    }
-
-    /*
-     * Показываем структуру только верхнего уровня.
-     * Это позволит понять, где Lampa хранит movie/card.
-     */
-    function logObjectKeys(name, object) {
-        if (
-            !object ||
-            typeof object !== 'object'
-        ) {
-            log(
-                name + ':',
-                object
-            );
-
-            return;
-        }
-
-        var keys = [];
-
-        try {
-            keys =
-                Object.keys(object);
-        } catch (e) {
-            log(
-                name + ': <cannot inspect>'
-            );
-
-            return;
-        }
-
-        log(
-            name + ' KEYS:',
-            keys
-        );
     }
 
     function getKPFull(
@@ -352,9 +539,7 @@
                     !json ||
                     !json.simular ||
                     !Array.isArray(
-                        json
-                            .simular
-                            .results
+                        json.simular.results
                     )
                 ) {
                     log(
@@ -454,44 +639,28 @@
         var card =
             $(
                 '<div class="card selector layer--visible layer--render card--loaded">' +
-
                     '<div class="card__view">' +
-
                         '<img class="card__img">' +
-
                         '<div class="card__icons">' +
                             '<div class="card__icons-inner"></div>' +
                         '</div>' +
-
                     '</div>' +
-
                     '<div class="card__title"></div>' +
                     '<div class="card__age"></div>' +
-
                 '</div>'
             );
 
         card
-            .find(
-                '.card__title'
-            )
-            .text(
-                title
-            );
+            .find('.card__title')
+            .text(title);
 
         card
-            .find(
-                '.card__age'
-            )
-            .text(
-                year
-            );
+            .find('.card__age')
+            .text(year);
 
         if (poster) {
             card
-                .find(
-                    '.card__img'
-                )
+                .find('.card__img')
                 .attr(
                     'src',
                     poster
@@ -505,9 +674,7 @@
                 );
         } else {
             card
-                .find(
-                    '.card__img'
-                )
+                .find('.card__img')
                 .attr(
                     'src',
                     './img/img_broken.svg'
@@ -520,15 +687,11 @@
             vote !== undefined
         ) {
             card
-                .find(
-                    '.card__view'
-                )
+                .find('.card__view')
                 .append(
                     $(
                         '<div class="card__vote"></div>'
-                    ).text(
-                        vote
-                    )
+                    ).text(vote)
                 );
         }
 
@@ -551,31 +714,19 @@
         var line =
             $(
                 '<div class="items-line layer--visible layer--render items-line--type-default">' +
-
                     '<div class="items-line__head">' +
-
                         '<div class="items-line__title">' +
                             'Рекомендации Кинопоиска' +
                         '</div>' +
-
                     '</div>' +
-
                     '<div class="items-line__body">' +
-
                         '<div class="scroll scroll--horizontal">' +
-
                             '<div class="scroll__content">' +
-
                                 '<div class="scroll__body mapping--line">' +
-
                                 '</div>' +
-
                             '</div>' +
-
                         '</div>' +
-
                     '</div>' +
-
                 '</div>'
             );
 
@@ -645,22 +796,15 @@
         if (
             similarTitle.length
         ) {
-            var similarLine =
-                similarTitle.closest(
-                    '.items-line'
-                );
-
-            similarLine.before(
-                line
-            );
+            similarTitle
+                .closest('.items-line')
+                .before(line);
 
             log(
                 'Inserted before "Похожие"'
             );
         } else {
-            root.append(
-                line
-            );
+            root.append(line);
 
             log(
                 '"Похожие" not found'
@@ -736,59 +880,25 @@
                     card
                 );
 
-                /*
-                 * Вот это сейчас главное.
-                 */
-                logObjectKeys(
-                    'EVENT OBJECT',
-                    event.object
-                );
+                var ids =
+                    extractIds(
+                        event
+                    );
 
-                logObjectKeys(
-                    'EVENT LINK',
-                    event.link
-                );
-
-                logObjectKeys(
-                    'ACTIVITY',
-                    event.object.activity
+                log(
+                    'IDS FROM LAMPA:',
+                    ids
                 );
 
                 /*
-                 * Ищем KP ID во всём объекте события.
+                 * Вариант 1:
+                 * KP ID уже есть.
                  */
-                var kpId =
-                    findKpId(
-                        event.object,
-                        'event.object'
-                    );
-
-                if (!kpId) {
-                    kpId =
-                        findKpId(
-                            event.link,
-                            'event.link'
-                        );
-                }
-
-                if (!kpId) {
-                    kpId =
-                        findKpId(
-                            event,
-                            'event'
-                        );
-                }
-
-                if (kpId) {
-                    log(
-                        'KP ID FOUND:',
-                        kpId
-                    );
-
+                if (ids.kp) {
                     loadKP(
                         function () {
                             getKPFull(
-                                kpId,
+                                ids.kp,
                                 function (
                                     results
                                 ) {
@@ -804,22 +914,70 @@
                     return;
                 }
 
-                log(
-                    'NO KP ID FOUND IN LAMPA OBJECT'
-                );
+                /*
+                 * Вариант 2:
+                 * Есть TMDB ID.
+                 */
+                if (ids.tmdb) {
+                    log(
+                        'TMDB ID:',
+                        ids.tmdb
+                    );
+
+                    loadKP(
+                        function () {
+                            getTMDBData(
+                                ids.tmdb,
+                                function (
+                                    tmdbJson
+                                ) {
+                                    if (
+                                        !tmdbJson
+                                    ) {
+                                        log(
+                                            'TMDB DATA EMPTY'
+                                        );
+
+                                        return;
+                                    }
+
+                                    var kpId =
+                                        findKpId(
+                                            tmdbJson,
+                                            'tmdb'
+                                        );
+
+                                    if (
+                                        !kpId
+                                    ) {
+                                        log(
+                                            'KP ID NOT FOUND IN TMDB RESPONSE'
+                                        );
+
+                                        return;
+                                    }
+
+                                    getKPFull(
+                                        kpId,
+                                        function (
+                                            results
+                                        ) {
+                                            insertLine(
+                                                root,
+                                                results
+                                            );
+                                        }
+                                    );
+                                }
+                            );
+                        }
+                    );
+
+                    return;
+                }
 
                 log(
-                    'EVENT OBJECT FULL:',
-                    event.object
-                );
-
-                log(
-                    'EVENT LINK FULL:',
-                    event.link
-                );
-
-                log(
-                    'If KP ID is absent, this test stops here.'
+                    'NO TMDB ID / KP ID FOUND'
                 );
             }
         );
@@ -839,9 +997,7 @@
                         install() ||
                         attempts >= 120
                     ) {
-                        clearInterval(
-                            timer
-                        );
+                        clearInterval(timer);
                     }
                 },
                 500
