@@ -1,8 +1,8 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.1.2';
-    var BUILD = '2026-09-20-18-35';
+    var VERSION = '1.2.0';
+    var BUILD = '2026-09-20-18-50';
     var PLUGIN = 'kp_recommendations_test';
 
     var START_TIME = performance.now();
@@ -51,9 +51,7 @@
     };
 
     var KP_SOURCE_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=112';
-
-    var activeJobs = [];
+        'https://nb557.github.io/plugins/kp_source.js?v=120';
 
     function loadKP(callback) {
         if (
@@ -63,18 +61,14 @@
             Lampa.Api.sources &&
             Lampa.Api.sources.KP
         ) {
-            log(
-                'KP ALREADY LOADED'
-            );
+            log('KP ALREADY LOADED');
 
             callback();
 
             return;
         }
 
-        log(
-            'KP LOAD START'
-        );
+        log('KP LOAD START');
 
         var script =
             document.createElement('script');
@@ -314,7 +308,9 @@
                             ? json.results.bindings
                             : [];
 
-                    if (!bindings.length) {
+                    if (
+                        !bindings.length
+                    ) {
                         log(
                             'WIKIDATA KP ID NOT FOUND'
                         );
@@ -465,7 +461,116 @@
         );
     }
 
-    function createCard(item) {
+    /*
+     * Делаем полноценные данные Lampa
+     * для Router.call('full', data).
+     */
+    function getCardData(item) {
+        var kpId =
+            getValue(
+                item,
+                [
+                    'kinopoisk_id',
+                    'kinopoiskId',
+                    'kp_id',
+                    'kpId',
+                    'id'
+                ]
+            );
+
+        var title =
+            getTitle(item);
+
+        var year =
+            getYear(item);
+
+        var poster =
+            getPoster(item);
+
+        var data = {};
+
+        /*
+         * Сохраняем исходные поля KP.
+         */
+        for (
+            var key in item
+        ) {
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    item,
+                    key
+                )
+            ) {
+                data[key] =
+                    item[key];
+            }
+        }
+
+        /*
+         * Поля, необходимые Lampa.
+         */
+        data.source = 'KP';
+
+        if (kpId) {
+            data.kinopoisk_id =
+                kpId;
+
+            data.id =
+                kpId;
+        }
+
+        data.title =
+            title;
+
+        if (year) {
+            data.year =
+                year;
+        }
+
+        if (poster) {
+            data.img =
+                poster;
+
+            data.poster =
+                poster;
+        }
+
+        return data;
+    }
+
+    function openCard(
+        item
+    ) {
+        var data =
+            getCardData(item);
+
+        log(
+            'OPEN CARD:',
+            data
+        );
+
+        if (
+            typeof Router !== 'undefined' &&
+            Router &&
+            typeof Router.call ===
+                'function'
+        ) {
+            Router.call(
+                'full',
+                data
+            );
+
+            return;
+        }
+
+        log(
+            'ERROR: Router.call unavailable'
+        );
+    }
+
+    function createCard(
+        item
+    ) {
         var title =
             getTitle(item);
 
@@ -553,13 +658,26 @@
                 );
         }
 
+        /*
+         * Lampa navigation.
+         */
         card.on(
             'hover:enter',
             function () {
-                log(
-                    'SELECT:',
-                    title,
-                    year
+                openCard(
+                    item
+                );
+            }
+        );
+
+        /*
+         * Для мыши/обычного click.
+         */
+        card.on(
+            'click',
+            function () {
+                openCard(
+                    item
                 );
             }
         );
@@ -597,7 +715,9 @@
         results.forEach(
             function (item) {
                 body.append(
-                    createCard(item)
+                    createCard(
+                        item
+                    )
                 );
             }
         );
@@ -605,15 +725,210 @@
         return line;
     }
 
-    function findFullRoot(
-        activity
+    /*
+     * Ищем нативные строки.
+     */
+    function getRows(
+        root
+    ) {
+        var rows = [];
+
+        root
+            .find(
+                '.items-line'
+            )
+            .each(
+                function () {
+                    var row =
+                        $(this);
+
+                    var title =
+                        row
+                            .find(
+                                '.items-line__title'
+                            )
+                            .first()
+                            .text()
+                            .trim();
+
+                    rows.push({
+                        el: row,
+                        title: title
+                    });
+                }
+            );
+
+        return rows;
+    }
+
+    /*
+     * Правильная позиция:
+     *
+     * Комментарии
+     * ...
+     * Похожие
+     * Рекомендации Кинопоиска
+     * Рекомендации
+     *
+     * Если "Похожие" нет —
+     * ставим перед нативными "Рекомендации".
+     */
+    function insertLine(
+        root,
+        line
+    ) {
+        var rows =
+            getRows(
+                root
+            );
+
+        log(
+            'NATIVE ROWS:',
+            rows.map(
+                function (row) {
+                    return row.title;
+                }
+            )
+        );
+
+        var similar =
+            null;
+
+        var recommendations =
+            null;
+
+        for (
+            var i = 0;
+            i < rows.length;
+            i++
+        ) {
+            if (
+                rows[i].title ===
+                'Похожие'
+            ) {
+                similar =
+                    rows[i].el;
+            }
+
+            if (
+                rows[i].title ===
+                'Рекомендации'
+            ) {
+                recommendations =
+                    rows[i].el;
+            }
+        }
+
+        /*
+         * Вариант 1:
+         * после "Похожие".
+         */
+        if (
+            similar &&
+            similar.length
+        ) {
+            similar.after(
+                line
+            );
+
+            log(
+                'INSERTED AFTER "Похожие"'
+            );
+
+            return true;
+        }
+
+        /*
+         * Вариант 2:
+         * перед обычными "Рекомендации".
+         */
+        if (
+            recommendations &&
+            recommendations.length
+        ) {
+            recommendations.before(
+                line
+            );
+
+            log(
+                'INSERTED BEFORE "Рекомендации"'
+            );
+
+            return true;
+        }
+
+        /*
+         * Вариант 3:
+         * перед первым Director/Actors.
+         */
+        var director =
+            root
+                .find(
+                    '.items-line__title'
+                )
+                .filter(
+                    function () {
+                        var text =
+                            $(this)
+                                .text()
+                                .trim();
+
+                        return (
+                            text ===
+                                'Режиссёр' ||
+                            text ===
+                                'Режиссеры' ||
+                            text ===
+                                'Актёры' ||
+                            text ===
+                                'Актеры'
+                        );
+                    }
+                )
+                .first();
+
+        if (
+            director.length
+        ) {
+            director
+                .closest(
+                    '.items-line'
+                )
+                .before(
+                    line
+                );
+
+            log(
+                'INSERTED BEFORE PEOPLE ROW'
+            );
+
+            return true;
+        }
+
+        /*
+         * Последний fallback.
+         */
+        root.append(
+            line
+        );
+
+        log(
+            'INSERTED AT ROOT FALLBACK'
+        );
+
+        return true;
+    }
+
+    function render(
+        activity,
+        results
     ) {
         if (
             !activity ||
             typeof activity.render !==
                 'function'
         ) {
-            return null;
+            return;
         }
 
         var root =
@@ -624,268 +939,61 @@
             typeof root.find !==
                 'function'
         ) {
-            return null;
+            return;
         }
 
-        return root;
-    }
-
-    function mountResults(
-        activity,
-        results,
-        reason
-    ) {
-        var root =
-            findFullRoot(
-                activity
-            );
-
-        if (!root) {
-            log(
-                'MOUNT FAILED: NO ROOT'
-            );
-
-            return false;
-        }
-
-        var existing =
-            root.find(
+        /*
+         * Удаляем старую строку,
+         * если она есть.
+         */
+        root
+            .find(
                 '.kp-recommendations-line'
-            );
-
-        if (existing.length) {
-            log(
-                'ROW ALREADY EXISTS:',
-                reason
-            );
-
-            return true;
-        }
+            )
+            .remove();
 
         var line =
             createLine(
                 results
             );
 
-        /*
-         * Ставим именно между нативными
-         * "Рекомендации" и "Похожие".
-         */
-        var similarTitle =
-            root
-                .find(
-                    '.items-line__title'
-                )
-                .filter(
-                    function () {
-                        return (
-                            $(this)
-                                .text()
-                                .trim() ===
-                            'Похожие'
-                        );
-                    }
-                )
-                .first();
+        insertLine(
+            root,
+            line
+        );
 
-        if (
-            similarTitle.length
-        ) {
-            similarTitle
-                .closest(
-                    '.items-line'
-                )
-                .before(
-                    line
-                );
-
-            log(
-                'ROW INSERTED BEFORE "Похожие":',
-                reason
-            );
-        } else {
-            /*
-             * Запасной вариант:
-             * после последней native строки.
-             */
-            var rows =
-                root.find(
-                    '.items-line'
-                );
-
-            if (rows.length) {
-                rows
-                    .last()
-                    .after(line);
-
-                log(
-                    'ROW INSERTED AFTER LAST LINE:',
-                    reason
-                );
-            } else {
-                log(
-                    'NO ITEMS-LINE FOUND'
-                );
-
-                return false;
-            }
-        }
-
-        var actual =
+        var check =
             root.find(
                 '.kp-recommendations-line'
             );
 
         log(
-            'ROW COUNT AFTER INSERT:',
-            actual.length
+            'ROW COUNT:',
+            check.length
         );
 
-        if (
-            actual.length
-        ) {
-            log(
-                'CARD COUNT:',
-                actual
-                    .find('.card')
-                    .length
-            );
-
-            log(
-                'CONNECTED:',
-                !!(
-                    actual[0] &&
-                    document.documentElement.contains(
-                        actual[0]
-                    )
-                )
-            );
-
-            return true;
-        }
-
-        return false;
-    }
-
-    function startDomWatch(
-        activity,
-        results
-    ) {
         log(
-            'DOM WATCH START'
+            'CARD COUNT:',
+            check
+                .find('.card')
+                .length
         );
 
-        var attempts = 0;
-        var maxAttempts = 100;
-
-        function check() {
-            attempts++;
-
-            var root =
-                findFullRoot(
-                    activity
-                );
-
-            if (!root) {
-                return;
-            }
-
-            var exists =
-                root.find(
-                    '.kp-recommendations-line'
-                ).length;
-
-            if (!exists) {
-                log(
-                    'ROW MISSING -> REMOUNT',
-                    attempts
-                );
-
-                mountResults(
-                    activity,
-                    results,
-                    'watch #' + attempts
-                );
-            }
-
-            if (
-                attempts >= maxAttempts
-            ) {
-                clearInterval(
-                    timer
-                );
-
-                log(
-                    'DOM WATCH STOP'
-                );
-            }
-        }
-
-        check();
-
-        var timer =
-            setInterval(
-                check,
-                100
-            );
-
-        activeJobs.push(
-            timer
+        log(
+            'CONNECTED:',
+            !!(
+                check.length &&
+                check[0] &&
+                document.documentElement.contains(
+                    check[0]
+                )
+            )
         );
 
-        /*
-         * Дополнительно ловим мгновенную
-         * перерисовку Lampa.
-         */
-        if (
-            window.MutationObserver &&
-            document.body
-        ) {
-            var observer =
-                new MutationObserver(
-                    function () {
-                        var root =
-                            findFullRoot(
-                                activity
-                            );
-
-                        if (!root) {
-                            return;
-                        }
-
-                        if (
-                            !root.find(
-                                '.kp-recommendations-line'
-                            ).length
-                        ) {
-                            mountResults(
-                                activity,
-                                results,
-                                'mutation'
-                            );
-                        }
-                    }
-                );
-
-            observer.observe(
-                document.body,
-                {
-                    childList: true,
-                    subtree: true
-                }
-            );
-
-            setTimeout(
-                function () {
-                    observer.disconnect();
-
-                    log(
-                        'MUTATION WATCH STOP'
-                    );
-                },
-                10000
-            );
-        }
+        log(
+            'UI RESULTS RENDERED:',
+            results.length
+        );
     }
 
     function install() {
@@ -898,11 +1006,14 @@
             return false;
         }
 
-        if (install.done) {
+        if (
+            install.done
+        ) {
             return true;
         }
 
-        install.done = true;
+        install.done =
+            true;
 
         log(
             'PLUGIN INSTALLED'
@@ -929,16 +1040,14 @@
                 var activity =
                     event.object.activity;
 
-                log(
-                    'FULL COMPLETE EVENT'
-                );
-
                 var root =
-                    findFullRoot(
-                        activity
-                    );
+                    activity.render();
 
-                if (!root) {
+                if (
+                    !root ||
+                    typeof root.find !==
+                        'function'
+                ) {
                     return;
                 }
 
@@ -949,6 +1058,10 @@
                 ) {
                     return;
                 }
+
+                log(
+                    'FULL COMPLETE EVENT'
+                );
 
                 log(
                     'CURRENT CARD:',
@@ -981,7 +1094,8 @@
                     false;
 
                 var directKpId =
-                    ids.kp || null;
+                    ids.kp ||
+                    null;
 
                 var wikidataKpId =
                     null;
@@ -998,7 +1112,9 @@
                         directKpId ||
                         wikidataKpId;
 
-                    if (!finalKpId) {
+                    if (
+                        !finalKpId
+                    ) {
                         log(
                             'NO KP ID'
                         );
@@ -1013,7 +1129,9 @@
 
                     getKPFull(
                         finalKpId,
-                        function (results) {
+                        function (
+                            results
+                        ) {
                             log(
                                 'TOTAL PIPELINE:',
                                 Math.round(
@@ -1027,20 +1145,7 @@
                                 results.length
                             );
 
-                            /*
-                             * Вставляем в актуальный DOM.
-                             */
-                            mountResults(
-                                activity,
-                                results,
-                                'results'
-                            );
-
-                            /*
-                             * И следим за Lampa,
-                             * чтобы она не удалила строку.
-                             */
-                            startDomWatch(
+                            render(
                                 activity,
                                 results
                             );
@@ -1067,10 +1172,14 @@
                 /*
                  * IMDb -> Wikidata.
                  */
-                if (ids.imdb) {
+                if (
+                    ids.imdb
+                ) {
                     getKpIdFromWikidata(
                         ids.imdb,
-                        function (value) {
+                        function (
+                            value
+                        ) {
                             wikidataKpId =
                                 value;
 
@@ -1096,7 +1205,9 @@
         return true;
     }
 
-    if (!install()) {
+    if (
+        !install()
+    ) {
         var attempts = 0;
 
         var timer =
