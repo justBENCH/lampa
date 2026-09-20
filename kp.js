@@ -1,21 +1,20 @@
-/* Kinopoisk Similar for Lampa v1.5.0
- * BUILD: 2026-09-20-18-50
+/* Kinopoisk Similar for Lampa v1.5.1
+ * BUILD: 2026-09-20-18-45
  *
  * TMDB detail
  * -> IMDb
  * -> Wikidata
- * -> Kinopoisk ID
- * -> Kinopoisk similars
+ * -> KP ID
+ * -> KP similars
  * -> native Lampa Card
  * -> native KP source
- * -> Router.call('full')
  */
 
 (function () {
     'use strict';
 
-    var VERSION = '1.5.0';
-    var BUILD = '2026-09-20-18-50';
+    var VERSION = '1.5.1';
+    var BUILD = '2026-09-20-18-45';
     var PREFIX = '[KP UI v' + VERSION + ']';
 
     console.log(PREFIX + ' VERSION:', VERSION);
@@ -30,8 +29,8 @@
 
     var currentKey = null;
     var working = false;
-    var nativeCards = [];
     var kpSourceLoading = null;
+    var nativeCards = [];
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
@@ -73,8 +72,7 @@
                 document.createElement('script');
 
             script.src =
-                'https://raw.githubusercontent.com/nb557/plugins/master/kp_source.js' +
-                '?v=' +
+                'https://raw.githubusercontent.com/nb557/plugins/master/kp_source.js?v=' +
                 Date.now();
 
             script.onload = function () {
@@ -82,8 +80,8 @@
 
                 var attempts = 0;
 
-                var timer =
-                    setInterval(function () {
+                var timer = setInterval(
+                    function () {
                         attempts++;
 
                         if (
@@ -113,7 +111,9 @@
 
                             resolve(false);
                         }
-                    }, 100);
+                    },
+                    100
+                );
             };
 
             script.onerror = function (error) {
@@ -133,7 +133,7 @@
 
     /*
      * ---------------------------------------------------------
-     * LAMPA CARD
+     * LAMPA NATIVE CARD
      * ---------------------------------------------------------
      */
 
@@ -178,9 +178,7 @@
 
         var data = {
             id: 'KP_' + kpId,
-
             source: 'KP',
-
             kinopoisk_id: kpId,
 
             title: title,
@@ -200,17 +198,13 @@
             year: year,
 
             poster: poster,
-
             img: poster,
-
             background_image: poster,
 
             vote_average: rating,
-
             rating: rating,
 
             type: 'movie',
-
             media_type: 'movie'
         };
 
@@ -265,45 +259,43 @@
             return null;
         }
 
-        card.use({
-            onFocus: function () {
-                log(
-                    'CARD FOCUS:',
-                    title
-                );
-            },
-
-            onEnter: function () {
-                log(
-                    'CARD ENTER:',
-                    title,
-                    'KP:',
-                    kpId
-                );
-
-                if (
-                    Lampa.Router &&
-                    typeof Lampa.Router.call ===
-                        'function'
-                ) {
-                    Lampa.Router.call(
-                        'full',
-                        data
+        if (
+            typeof card.use === 'function'
+        ) {
+            card.use({
+                onFocus: function () {
+                    log(
+                        'CARD FOCUS:',
+                        title
                     );
+                },
+
+                onEnter: function () {
+                    log(
+                        'CARD ENTER:',
+                        title,
+                        'KP:',
+                        kpId
+                    );
+
+                    if (
+                        Lampa.Router &&
+                        typeof Lampa.Router.call ===
+                            'function'
+                    ) {
+                        Lampa.Router.call(
+                            'full',
+                            data
+                        );
+                    }
                 }
-            }
-        });
+            });
+        }
 
         nativeCards.push(card);
 
         return card;
     }
-
-    /*
-     * ---------------------------------------------------------
-     * ROW
-     * ---------------------------------------------------------
-     */
 
     function clearNativeCards() {
         nativeCards = [];
@@ -379,14 +371,16 @@
                 !element &&
                 card.el
             ) {
-                element = card.el;
+                element =
+                    card.el;
             }
 
             if (
                 !element &&
                 card.html
             ) {
-                element = card.html;
+                element =
+                    card.html;
             }
 
             if (
@@ -738,11 +732,20 @@
             ? new Lampa.Reguest()
             : null;
 
+    log(
+        'LAMPA REQUEST:',
+        !!network
+    );
+
     function request(
         url,
         success,
-        error
+        error,
+        attempt
     ) {
+        attempt =
+            attempt || 1;
+
         if (!network) {
             error(
                 new Error(
@@ -753,14 +756,63 @@
             return;
         }
 
+        log(
+            'KP REQUEST ATTEMPT:',
+            attempt,
+            url
+        );
+
         network.timeout(
             20000
         );
 
         network.silent(
             url,
-            success,
-            error,
+            function (
+                response
+            ) {
+                log(
+                    'KP REQUEST SUCCESS:',
+                    attempt
+                );
+
+                success(
+                    response
+                );
+            },
+            function (
+                a,
+                c
+            ) {
+                log(
+                    'KP REQUEST ERROR:',
+                    attempt,
+                    a
+                );
+
+                if (
+                    attempt < 3
+                ) {
+                    setTimeout(
+                        function () {
+                            request(
+                                url,
+                                success,
+                                error,
+                                attempt + 1
+                            );
+                        },
+                        700
+                    );
+
+                    return;
+                }
+
+                error(
+                    a,
+                    c
+                );
+            },
             false,
             {
                 headers: {
@@ -798,6 +850,11 @@
                     function (
                         response
                     ) {
+                        log(
+                            'SIMILARS RESPONSE:',
+                            response
+                        );
+
                         var items =
                             response &&
                             Array.isArray(
@@ -805,11 +862,6 @@
                             )
                                 ? response.items
                                 : [];
-
-                        log(
-                            'SIMILARS RESPONSE:',
-                            response
-                        );
 
                         log(
                             'RAW SIMILARS COUNT:',
@@ -820,7 +872,13 @@
                             items
                         );
                     },
-                    reject
+                    function (
+                        error
+                    ) {
+                        reject(
+                            error
+                        );
+                    }
                 );
             }
         );
@@ -923,6 +981,11 @@
             card.kinopoisk;
 
         if (kp) {
+            log(
+                'KP ID FROM LAMPA:',
+                kp
+            );
+
             return Promise.resolve(
                 String(kp)
             );
@@ -961,17 +1024,21 @@
             Date.now();
 
         if (working) {
+            log(
+                'ALREADY WORKING'
+            );
+
             return;
         }
+
+        log(
+            'FULL COMPLETE EVENT'
+        );
 
         var card =
             event &&
             event.object &&
             event.object.card;
-
-        log(
-            'FULL COMPLETE EVENT'
-        );
 
         log(
             'CURRENT CARD:',
@@ -1039,20 +1106,31 @@
                         items.length
                     );
 
+                    log(
+                        'TOTAL PIPELINE:',
+                        elapsed(start) +
+                        'ms'
+                    );
+
                     if (!items.length) {
                         return;
                     }
 
+                    log(
+                        'RESULTS READY:',
+                        items.length
+                    );
+
                     /*
-                     * Make sure KP source exists BEFORE
-                     * creating clickable native cards.
+                     * KP source is loaded ONLY after
+                     * the API has successfully returned.
                      */
                     return loadKPSource()
                         .then(
                             function (
-                                kpReady
+                                ready
                             ) {
-                                if (!kpReady) {
+                                if (!ready) {
                                     throw new Error(
                                         'KP source not registered'
                                     );
@@ -1132,6 +1210,10 @@
 
         log(
             'LISTENER INSTALLED'
+        );
+    } else {
+        log(
+            'Lampa.Listener unavailable'
         );
     }
 
