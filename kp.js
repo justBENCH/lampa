@@ -1,8 +1,8 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.0.3';
-    var BUILD = '2026-09-20-17-45';
+    var VERSION = '1.0.4';
+    var BUILD = '2026-09-20-17-50';
     var PLUGIN = 'kp_recommendations_test';
 
     console.log('[KP UI] ========================================');
@@ -19,9 +19,8 @@
         version: VERSION
     };
 
-    var KP_API = 'https://kinopoiskapiunofficial.tech/';
-    var KP_PROXY = 'https://cors.kp556.workers.dev:8443/';
-    var KP_KEY = '2a4a0808-81a3-40ae-b0d3-e11335ede616';
+    var KP_URL =
+        'https://nb557.github.io/plugins/kp_source.js?v=104';
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
@@ -29,46 +28,7 @@
         console.log.apply(console, args);
     }
 
-    function kpRequest(path, callback, onerror) {
-        var url = KP_PROXY + path;
-
-        log('KP REQUEST:', url);
-
-        fetch(url, {
-            method: 'GET',
-            headers: {
-                'X-API-KEY': KP_KEY
-            }
-        })
-            .then(function (response) {
-                log(
-                    'KP HTTP:',
-                    response.status,
-                    response.statusText
-                );
-
-                if (!response.ok) {
-                    throw new Error(
-                        'HTTP ' + response.status
-                    );
-                }
-
-                return response.json();
-            })
-            .then(function (json) {
-                log('KP RESPONSE:', json);
-                callback(json);
-            })
-            .catch(function (error) {
-                log('KP REQUEST ERROR:', error);
-
-                if (onerror) {
-                    onerror(error);
-                }
-            });
-    }
-
-    function loadKPSource(callback) {
+    function loadKP(callback) {
         if (
             window.kp_source_plugin &&
             window.Lampa &&
@@ -76,7 +36,7 @@
             Lampa.Api.sources &&
             Lampa.Api.sources.KP
         ) {
-            log('KP source already loaded');
+            log('KP already loaded');
             callback();
             return;
         }
@@ -85,8 +45,7 @@
 
         var script = document.createElement('script');
 
-        script.src =
-            'https://nb557.github.io/plugins/kp_source.js?v=103';
+        script.src = KP_URL;
 
         script.onload = function () {
             log('kp_source.js loaded');
@@ -172,14 +131,27 @@
     }
 
     function searchKP(card, callback) {
-        var keyword =
-            encodeURIComponent(card.title);
+        var source =
+            Lampa.Api.sources.KP;
 
-        var path =
-            'api/v2.1/films/search-by-keyword' +
-            '?keyword=' +
-            keyword +
-            '&page=1';
+        if (
+            !source ||
+            typeof source.discovery !== 'function'
+        ) {
+            log('ERROR: KP discovery unavailable');
+            return;
+        }
+
+        var discovery =
+            source.discovery();
+
+        if (
+            !discovery ||
+            typeof discovery.search !== 'function'
+        ) {
+            log('ERROR: KP search unavailable');
+            return;
+        }
 
         log(
             'SEARCHING:',
@@ -187,18 +159,34 @@
             card.year
         );
 
+        /*
+         * ВАЖНО:
+         * Используем именно search, а не keyword.
+         * Этот вариант уже успешно работал
+         * в предыдущем тесте kp_source.js.
+         */
+        var params = {
+            search: card.title,
+            page: 1
+        };
+
         log(
-            'SEARCH URL:',
-            KP_PROXY + path
+            'SEARCH PARAMS:',
+            params
         );
 
-        kpRequest(
-            path,
-            function (json) {
+        discovery.search(
+            params,
+            function (result) {
+                log(
+                    'SEARCH RESPONSE:',
+                    result
+                );
+
                 var results =
-                    json &&
-                    Array.isArray(json.items)
-                        ? json.items
+                    result &&
+                    Array.isArray(result.results)
+                        ? result.results
                         : [];
 
                 log(
@@ -207,12 +195,16 @@
                 );
 
                 if (!results.length) {
-                    log('No search results');
+                    log('No results');
                     return;
                 }
 
                 var selected = null;
 
+                /*
+                 * Сначала ищем точное совпадение
+                 * названия + года.
+                 */
                 for (
                     var i = 0;
                     i < results.length;
@@ -221,13 +213,13 @@
                     var item = results[i];
 
                     var title =
-                        item.nameRu ||
-                        item.nameEn ||
-                        item.nameOriginal ||
+                        item.title ||
+                        item.name ||
                         '';
 
                     var itemYear =
                         item.year ||
+                        item.release_year ||
                         '';
 
                     if (
@@ -237,10 +229,15 @@
                             String(card.year)
                     ) {
                         selected = item;
+
                         break;
                     }
                 }
 
+                /*
+                 * Если год не совпал —
+                 * ищем совпадение только по названию.
+                 */
                 if (!selected) {
                     for (
                         var j = 0;
@@ -250,9 +247,8 @@
                         var item2 = results[j];
 
                         var title2 =
-                            item2.nameRu ||
-                            item2.nameEn ||
-                            item2.nameOriginal ||
+                            item2.title ||
+                            item2.name ||
                             '';
 
                         if (
@@ -260,31 +256,32 @@
                             card.title.toLowerCase()
                         ) {
                             selected = item2;
+
                             break;
                         }
                     }
                 }
 
+                /*
+                 * Последний fallback —
+                 * первый результат KP.
+                 */
                 if (!selected) {
                     selected = results[0];
                 }
 
                 log(
-                    'SELECTED KP:',
+                    'SELECTED:',
                     selected
                 );
 
                 callback(selected);
-            },
-            function () {
-                log('SEARCH FAILED');
             }
         );
     }
 
-    function getKPSimilar(selected, callback) {
+    function getKPFull(selected, callback) {
         var kpId =
-            selected.kinopoiskId ||
             selected.kinopoisk_id ||
             selected.kp_id ||
             selected.id;
@@ -294,47 +291,67 @@
             return;
         }
 
-        log('KINOPOSK ID:', kpId);
-
-        var path =
-            'api/v2.2/films/' +
-            kpId +
-            '/similars';
-
         log(
-            'SIMILAR URL:',
-            KP_PROXY + path
+            'KINOPOSK ID:',
+            kpId
         );
 
-        kpRequest(
-            path,
+        log(
+            'Calling KP.full(...)'
+        );
+
+        Lampa.Api.sources.KP.full(
+            {
+                card: {
+                    source: 'KP',
+                    kinopoisk_id: kpId
+                }
+            },
             function (json) {
-                var results =
-                    json &&
-                    Array.isArray(json.items)
-                        ? json.items
-                        : [];
+                log(
+                    'KP FULL RESPONSE:',
+                    json
+                );
+
+                if (
+                    !json ||
+                    !json.simular ||
+                    !Array.isArray(
+                        json.simular.results
+                    )
+                ) {
+                    log(
+                        'ERROR: No simular results'
+                    );
+
+                    return;
+                }
 
                 log(
                     'SIMILAR COUNT:',
-                    results.length
+                    json.simular.results.length
                 );
 
-                callback(results);
+                callback(
+                    json.simular.results
+                );
             },
-            function () {
-                log('SIMILAR REQUEST FAILED');
+            function (error) {
+                log(
+                    'KP FULL ERROR:',
+                    error
+                );
             }
         );
     }
 
     function getTitle(item) {
         return (
-            item.nameRu ||
-            item.nameEn ||
-            item.nameOriginal ||
             item.title ||
             item.name ||
+            item.nameRu ||
+            item.original_title ||
+            item.original_name ||
             'Без названия'
         );
     }
@@ -342,10 +359,11 @@
     function getYear(item) {
         return (
             item.year ||
+            item.release_year ||
             (
-                item.releaseDate
+                item.release_date
                     ? String(
-                        item.releaseDate
+                        item.release_date
                     ).slice(0, 4)
                     : ''
             )
@@ -354,18 +372,22 @@
 
     function getPoster(item) {
         return (
-            item.posterUrlPreview ||
-            item.posterUrl ||
             item.img ||
             item.poster ||
+            item.poster_path ||
+            item.poster_url ||
+            item.posterUrl ||
+            item.posterUrlPreview ||
             ''
         );
     }
 
     function getVote(item) {
         return (
-            item.ratingKinopoisk ||
+            item.vote ||
             item.rating ||
+            item.rating_kp ||
+            item.ratingKinopoisk ||
             ''
         );
     }
@@ -385,14 +407,20 @@
 
         var card = $(
             '<div class="card selector layer--visible layer--render card--loaded">' +
+
                 '<div class="card__view">' +
+
                     '<img class="card__img">' +
+
                     '<div class="card__icons">' +
                         '<div class="card__icons-inner"></div>' +
                     '</div>' +
+
                 '</div>' +
+
                 '<div class="card__title"></div>' +
                 '<div class="card__age"></div>' +
+
             '</div>'
         );
 
@@ -455,30 +483,44 @@
     function createLine(results) {
         var line = $(
             '<div class="items-line layer--visible layer--render items-line--type-default">' +
+
                 '<div class="items-line__head">' +
+
                     '<div class="items-line__title">' +
                         'Рекомендации Кинопоиска' +
                     '</div>' +
+
                 '</div>' +
+
                 '<div class="items-line__body">' +
+
                     '<div class="scroll scroll--horizontal">' +
+
                         '<div class="scroll__content">' +
+
                             '<div class="scroll__body mapping--line">' +
+
                             '</div>' +
+
                         '</div>' +
+
                     '</div>' +
+
                 '</div>' +
+
             '</div>'
         );
 
         var body =
             line.find('.mapping--line');
 
-        results.forEach(function (item) {
-            body.append(
-                createCard(item)
-            );
-        });
+        results.forEach(
+            function (item) {
+                body.append(
+                    createCard(item)
+                );
+            }
+        );
 
         return line;
     }
@@ -492,7 +534,10 @@
             !results ||
             !results.length
         ) {
-            log('Nothing to render');
+            log(
+                'Nothing to render'
+            );
+
             return;
         }
 
@@ -505,15 +550,19 @@
 
         var similarTitle =
             root
-                .find('.items-line__title')
-                .filter(function () {
-                    return (
-                        $(this)
-                            .text()
-                            .trim() ===
-                        'Похожие'
-                    );
-                })
+                .find(
+                    '.items-line__title'
+                )
+                .filter(
+                    function () {
+                        return (
+                            $(this)
+                                .text()
+                                .trim() ===
+                            'Похожие'
+                        );
+                    }
+                )
                 .first();
 
         if (similarTitle.length) {
@@ -522,7 +571,9 @@
                     '.items-line'
                 );
 
-            similarLine.before(line);
+            similarLine.before(
+                line
+            );
 
             log(
                 'Inserted before "Похожие"'
@@ -535,7 +586,9 @@
             );
         }
 
-        log('KP UI RENDERED');
+        log(
+            'KP UI RENDERED'
+        );
     }
 
     function install() {
@@ -554,14 +607,17 @@
 
         install.done = true;
 
-        log('PLUGIN INSTALLED');
+        log(
+            'PLUGIN INSTALLED'
+        );
 
         Lampa.Listener.follow(
             'full',
             function (event) {
                 if (
                     !event ||
-                    event.type !== 'complite' ||
+                    event.type !==
+                        'complite' ||
                     !event.object ||
                     !event.object.activity ||
                     typeof event.object.activity.render !==
@@ -601,17 +657,18 @@
                     log(
                         'Cannot detect title'
                     );
+
                     return;
                 }
 
-                loadKPSource(
+                loadKP(
                     function () {
                         searchKP(
                             card,
                             function (
                                 selected
                             ) {
-                                getKPSimilar(
+                                getKPFull(
                                     selected,
                                     function (
                                         results
@@ -644,7 +701,9 @@
                         install() ||
                         attempts >= 120
                     ) {
-                        clearInterval(timer);
+                        clearInterval(
+                            timer
+                        );
                     }
                 },
                 500
