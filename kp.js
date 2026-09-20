@@ -1,11 +1,17 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.1.1';
-    var BUILD = '2026-09-20-18-25';
+    var VERSION = '1.1.2';
+    var BUILD = '2026-09-20-18-35';
     var PLUGIN = 'kp_recommendations_test';
 
     var START_TIME = performance.now();
+
+    console.log('[KP UI] ========================================');
+    console.log('[KP UI] VERSION:', VERSION);
+    console.log('[KP UI] BUILD:', BUILD);
+    console.log('[KP UI] START:', new Date().toISOString());
+    console.log('[KP UI] ========================================');
 
     function elapsed() {
         return Math.round(
@@ -14,7 +20,8 @@
     }
 
     function log() {
-        var args = Array.prototype.slice.call(arguments);
+        var args =
+            Array.prototype.slice.call(arguments);
 
         args.unshift(
             '[T+' + elapsed() + 'ms]',
@@ -27,12 +34,6 @@
         );
     }
 
-    console.log('[KP UI] ========================================');
-    console.log('[KP UI] VERSION:', VERSION);
-    console.log('[KP UI] BUILD:', BUILD);
-    console.log('[KP UI] START:', new Date().toISOString());
-    console.log('[KP UI] ========================================');
-
     if (
         window[PLUGIN] &&
         window[PLUGIN].version === VERSION
@@ -41,6 +42,7 @@
             '[KP UI] ALREADY INSTALLED:',
             VERSION
         );
+
         return;
     }
 
@@ -49,7 +51,9 @@
     };
 
     var KP_SOURCE_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=111';
+        'https://nb557.github.io/plugins/kp_source.js?v=112';
+
+    var activeJobs = [];
 
     function loadKP(callback) {
         if (
@@ -59,116 +63,85 @@
             Lampa.Api.sources &&
             Lampa.Api.sources.KP
         ) {
-            log('KP ALREADY LOADED');
+            log(
+                'KP ALREADY LOADED'
+            );
+
             callback();
+
             return;
         }
 
-        log('KP LOAD START');
+        log(
+            'KP LOAD START'
+        );
 
         var script =
             document.createElement('script');
 
-        script.src = KP_SOURCE_URL;
+        script.src =
+            KP_SOURCE_URL;
 
-        script.onload = function () {
-            log('KP SOURCE NETWORK LOADED');
-
-            var attempts = 0;
-
-            var timer = setInterval(
-                function () {
-                    attempts++;
-
-                    if (
-                        window.kp_source_plugin &&
-                        Lampa.Api &&
-                        Lampa.Api.sources &&
-                        Lampa.Api.sources.KP
-                    ) {
-                        clearInterval(timer);
-
-                        log('KP SOURCE REGISTERED');
-
-                        callback();
-                        return;
-                    }
-
-                    if (attempts >= 40) {
-                        clearInterval(timer);
-
-                        log(
-                            'KP REGISTRATION TIMEOUT'
-                        );
-                    }
-                },
-                100
-            );
-        };
-
-        script.onerror = function () {
-            log('KP SOURCE LOAD ERROR');
-        };
-
-        document.head.appendChild(script);
-    }
-
-    function getCurrentCard(root) {
-        var title = '';
-        var year = '';
-
-        var titleEl =
-            root.find(
-                '.full-start-new__title'
-            );
-
-        if (titleEl.length) {
-            title =
-                titleEl
-                    .first()
-                    .text()
-                    .trim();
-        }
-
-        var head =
-            root.find(
-                '.full-start-new__head'
-            );
-
-        if (head.length) {
-            var match =
-                head
-                    .first()
-                    .text()
-                    .match(
-                        /\b(19|20)\d{2}\b/
-                    );
-
-            if (match) {
-                year = match[0];
-            }
-        }
-
-        if (!year) {
-            var text = root.text();
-
-            var fallback =
-                text.match(
-                    /\b(19|20)\d{2}\b/
+        script.onload =
+            function () {
+                log(
+                    'KP SOURCE NETWORK LOADED'
                 );
 
-            if (fallback) {
-                year = fallback[0];
-            }
-        }
+                var attempts = 0;
 
-        return {
-            title: title,
-            year: year
-        };
+                var timer =
+                    setInterval(
+                        function () {
+                            attempts++;
+
+                            if (
+                                window.kp_source_plugin &&
+                                Lampa.Api &&
+                                Lampa.Api.sources &&
+                                Lampa.Api.sources.KP
+                            ) {
+                                clearInterval(timer);
+
+                                log(
+                                    'KP SOURCE REGISTERED'
+                                );
+
+                                callback();
+
+                                return;
+                            }
+
+                            if (
+                                attempts >= 40
+                            ) {
+                                clearInterval(timer);
+
+                                log(
+                                    'KP REGISTRATION TIMEOUT'
+                                );
+                            }
+                        },
+                        100
+                    );
+            };
+
+        script.onerror =
+            function () {
+                log(
+                    'KP SOURCE LOAD ERROR'
+                );
+            };
+
+        document.head.appendChild(
+            script
+        );
     }
 
-    function getValue(object, names) {
+    function getValue(
+        object,
+        names
+    ) {
         if (
             !object ||
             typeof object !== 'object'
@@ -230,7 +203,8 @@
             i < objects.length;
             i++
         ) {
-            var object = objects[i];
+            var object =
+                objects[i];
 
             if (!object) {
                 continue;
@@ -290,7 +264,8 @@
         var query =
             'SELECT ?item ?kp WHERE {' +
             '?item wdt:P345 "' +
-            String(imdbId).replace(/"/g, '') +
+            String(imdbId)
+                .replace(/"/g, '') +
             '". ' +
             '?item wdt:P2603 ?kp. ' +
             '} LIMIT 1';
@@ -345,6 +320,7 @@
                         );
 
                         callback(null);
+
                         return;
                     }
 
@@ -387,7 +363,8 @@
             {
                 card: {
                     source: 'KP',
-                    kinopoisk_id: kpId
+                    kinopoisk_id:
+                        kpId
                 }
             },
 
@@ -408,16 +385,22 @@
                     );
 
                     callback([]);
+
                     return;
                 }
 
                 log(
                     'SIMILAR COUNT:',
-                    json.simular.results.length
+                    json
+                        .simular
+                        .results
+                        .length
                 );
 
                 callback(
-                    json.simular.results
+                    json
+                        .simular
+                        .results
                 );
             },
 
@@ -451,7 +434,10 @@
                 item.release_date
                     ? String(
                         item.release_date
-                    ).slice(0, 4)
+                    ).slice(
+                        0,
+                        4
+                    )
                     : ''
             )
         );
@@ -480,10 +466,17 @@
     }
 
     function createCard(item) {
-        var title = getTitle(item);
-        var year = getYear(item);
-        var poster = getPoster(item);
-        var vote = getVote(item);
+        var title =
+            getTitle(item);
+
+        var year =
+            getYear(item);
+
+        var poster =
+            getPoster(item);
+
+        var vote =
+            getVote(item);
 
         var card =
             $(
@@ -500,17 +493,30 @@
             );
 
         card
-            .find('.card__title')
-            .text(title);
+            .find(
+                '.card__title'
+            )
+            .text(
+                title
+            );
 
         card
-            .find('.card__age')
-            .text(year);
+            .find(
+                '.card__age'
+            )
+            .text(
+                year
+            );
 
         if (poster) {
             card
-                .find('.card__img')
-                .attr('src', poster)
+                .find(
+                    '.card__img'
+                )
+                .attr(
+                    'src',
+                    poster
+                )
                 .on(
                     'error',
                     function () {
@@ -520,7 +526,9 @@
                 );
         } else {
             card
-                .find('.card__img')
+                .find(
+                    '.card__img'
+                )
                 .attr(
                     'src',
                     './img/img_broken.svg'
@@ -533,11 +541,15 @@
             vote !== undefined
         ) {
             card
-                .find('.card__view')
+                .find(
+                    '.card__view'
+                )
                 .append(
                     $(
                         '<div class="card__vote"></div>'
-                    ).text(vote)
+                    ).text(
+                        vote
+                    )
                 );
         }
 
@@ -555,30 +567,110 @@
         return card;
     }
 
-    function createLine() {
-        return $(
-            '<div class="items-line layer--visible layer--render items-line--type-default kp-recommendations-line">' +
-                '<div class="items-line__head">' +
-                    '<div class="items-line__title">' +
-                        'Рекомендации Кинопоиска' +
+    function createLine(
+        results
+    ) {
+        var line =
+            $(
+                '<div class="items-line layer--visible layer--render items-line--type-default kp-recommendations-line">' +
+                    '<div class="items-line__head">' +
+                        '<div class="items-line__title">' +
+                            'Рекомендации Кинопоиска' +
+                        '</div>' +
                     '</div>' +
-                '</div>' +
-                '<div class="items-line__body">' +
-                    '<div class="scroll scroll--horizontal">' +
-                        '<div class="scroll__content">' +
-                            '<div class="scroll__body mapping--line">' +
+                    '<div class="items-line__body">' +
+                        '<div class="scroll scroll--horizontal">' +
+                            '<div class="scroll__content">' +
+                                '<div class="scroll__body mapping--line">' +
+                                '</div>' +
                             '</div>' +
                         '</div>' +
                     '</div>' +
-                '</div>' +
-            '</div>'
+                '</div>'
+            );
+
+        var body =
+            line.find(
+                '.mapping--line'
+            );
+
+        results.forEach(
+            function (item) {
+                body.append(
+                    createCard(item)
+                );
+            }
         );
+
+        return line;
     }
 
-    function insertLine(
-        root,
-        line
+    function findFullRoot(
+        activity
     ) {
+        if (
+            !activity ||
+            typeof activity.render !==
+                'function'
+        ) {
+            return null;
+        }
+
+        var root =
+            activity.render();
+
+        if (
+            !root ||
+            typeof root.find !==
+                'function'
+        ) {
+            return null;
+        }
+
+        return root;
+    }
+
+    function mountResults(
+        activity,
+        results,
+        reason
+    ) {
+        var root =
+            findFullRoot(
+                activity
+            );
+
+        if (!root) {
+            log(
+                'MOUNT FAILED: NO ROOT'
+            );
+
+            return false;
+        }
+
+        var existing =
+            root.find(
+                '.kp-recommendations-line'
+            );
+
+        if (existing.length) {
+            log(
+                'ROW ALREADY EXISTS:',
+                reason
+            );
+
+            return true;
+        }
+
+        var line =
+            createLine(
+                results
+            );
+
+        /*
+         * Ставим именно между нативными
+         * "Рекомендации" и "Похожие".
+         */
         var similarTitle =
             root
                 .find(
@@ -596,172 +688,204 @@
                 )
                 .first();
 
-        if (similarTitle.length) {
+        if (
+            similarTitle.length
+        ) {
             similarTitle
-                .closest('.items-line')
-                .before(line);
+                .closest(
+                    '.items-line'
+                )
+                .before(
+                    line
+                );
 
             log(
-                'LINE INSERTED BEFORE ПОХОЖИЕ'
+                'ROW INSERTED BEFORE "Похожие":',
+                reason
             );
         } else {
-            root.append(line);
+            /*
+             * Запасной вариант:
+             * после последней native строки.
+             */
+            var rows =
+                root.find(
+                    '.items-line'
+                );
 
-            log(
-                'LINE APPENDED TO ROOT'
-            );
-        }
-    }
+            if (rows.length) {
+                rows
+                    .last()
+                    .after(line);
 
-    function showLoading(root) {
-        root
-            .find(
-                '.kp-recommendations-line'
-            )
-            .remove();
+                log(
+                    'ROW INSERTED AFTER LAST LINE:',
+                    reason
+                );
+            } else {
+                log(
+                    'NO ITEMS-LINE FOUND'
+                );
 
-        var line = createLine();
-
-        line
-            .find(
-                '.mapping--line'
-            )
-            .html(
-                '<div class="kp-loading">Загрузка...</div>'
-            );
-
-        insertLine(
-            root,
-            line
-        );
-
-        log(
-            'LOADING ROW INSERTED'
-        );
-    }
-
-    function renderResults(
-        activity,
-        results
-    ) {
-        /*
-         * КРИТИЧНО:
-         * получаем СВЕЖИЙ root,
-         * а не используем старый root
-         * из момента открытия Full.
-         */
-        var root =
-            activity &&
-            typeof activity.render ===
-                'function'
-                ? activity.render()
-                : null;
-
-        log(
-            'FRESH ROOT:',
-            !!root
-        );
-
-        if (
-            !root ||
-            typeof root.find !==
-                'function'
-        ) {
-            log(
-                'FRESH ROOT INVALID'
-            );
-
-            return;
+                return false;
+            }
         }
 
-        var line =
+        var actual =
             root.find(
                 '.kp-recommendations-line'
             );
 
         log(
-            'FRESH ROOT EXISTING LINE:',
-            line.length
+            'ROW COUNT AFTER INSERT:',
+            actual.length
         );
-
-        /*
-         * Если строку Lampa успела удалить
-         * при своей перерисовке —
-         * создаём её заново.
-         */
-        if (!line.length) {
-            log(
-                'CREATING RESULT LINE AGAIN'
-            );
-
-            line = createLine();
-
-            insertLine(
-                root,
-                line
-            );
-        }
-
-        var body =
-            line.find(
-                '.mapping--line'
-            );
-
-        body.empty();
 
         if (
-            !results ||
-            !results.length
+            actual.length
         ) {
-            body.html(
-                '<div class="kp-loading">' +
-                    'Нет рекомендаций' +
-                '</div>'
+            log(
+                'CARD COUNT:',
+                actual
+                    .find('.card')
+                    .length
             );
 
             log(
-                'UI EMPTY'
+                'CONNECTED:',
+                !!(
+                    actual[0] &&
+                    document.documentElement.contains(
+                        actual[0]
+                    )
+                )
             );
 
-            return;
+            return true;
         }
 
-        results.forEach(
-            function (item) {
-                body.append(
-                    createCard(item)
-                );
-            }
+        return false;
+    }
+
+    function startDomWatch(
+        activity,
+        results
+    ) {
+        log(
+            'DOM WATCH START'
         );
 
-        log(
-            'UI RESULTS RENDERED:',
-            results.length
+        var attempts = 0;
+        var maxAttempts = 100;
+
+        function check() {
+            attempts++;
+
+            var root =
+                findFullRoot(
+                    activity
+                );
+
+            if (!root) {
+                return;
+            }
+
+            var exists =
+                root.find(
+                    '.kp-recommendations-line'
+                ).length;
+
+            if (!exists) {
+                log(
+                    'ROW MISSING -> REMOUNT',
+                    attempts
+                );
+
+                mountResults(
+                    activity,
+                    results,
+                    'watch #' + attempts
+                );
+            }
+
+            if (
+                attempts >= maxAttempts
+            ) {
+                clearInterval(
+                    timer
+                );
+
+                log(
+                    'DOM WATCH STOP'
+                );
+            }
+        }
+
+        check();
+
+        var timer =
+            setInterval(
+                check,
+                100
+            );
+
+        activeJobs.push(
+            timer
         );
 
         /*
-         * Проверяем, реально ли строка
-         * находится в document.
+         * Дополнительно ловим мгновенную
+         * перерисовку Lampa.
          */
-        var element =
-            line[0];
+        if (
+            window.MutationObserver &&
+            document.body
+        ) {
+            var observer =
+                new MutationObserver(
+                    function () {
+                        var root =
+                            findFullRoot(
+                                activity
+                            );
 
-        log(
-            'DOM CONNECTED:',
-            !!(
-                element &&
-                document.documentElement.contains(
-                    element
-                )
-            )
-        );
+                        if (!root) {
+                            return;
+                        }
 
-        log(
-            'CARD DOM COUNT:',
-            body
-                .find('.card')
-                .length
-        );
+                        if (
+                            !root.find(
+                                '.kp-recommendations-line'
+                            ).length
+                        ) {
+                            mountResults(
+                                activity,
+                                results,
+                                'mutation'
+                            );
+                        }
+                    }
+                );
+
+            observer.observe(
+                document.body,
+                {
+                    childList: true,
+                    subtree: true
+                }
+            );
+
+            setTimeout(
+                function () {
+                    observer.disconnect();
+
+                    log(
+                        'MUTATION WATCH STOP'
+                    );
+                },
+                10000
+            );
+        }
     }
 
     function install() {
@@ -810,13 +934,11 @@
                 );
 
                 var root =
-                    activity.render();
+                    findFullRoot(
+                        activity
+                    );
 
-                if (
-                    !root ||
-                    typeof root.find !==
-                        'function'
-                ) {
+                if (!root) {
                     return;
                 }
 
@@ -828,29 +950,35 @@
                     return;
                 }
 
-                var card =
-                    getCurrentCard(root);
-
                 log(
                     'CURRENT CARD:',
-                    card
+                    {
+                        title:
+                            root
+                                .find(
+                                    '.full-start-new__title'
+                                )
+                                .first()
+                                .text()
+                                .trim()
+                    }
                 );
 
                 var ids =
-                    extractIds(event);
+                    extractIds(
+                        event
+                    );
 
                 log(
                     'IDS FROM LAMPA:',
                     ids
                 );
 
-                /*
-                 * Показываем loading сразу.
-                 */
-                showLoading(root);
+                var kpReady =
+                    false;
 
-                var kpReady = false;
-                var wikidataReady = false;
+                var wikidataReady =
+                    false;
 
                 var directKpId =
                     ids.kp || null;
@@ -875,11 +1003,6 @@
                             'NO KP ID'
                         );
 
-                        renderResults(
-                            activity,
-                            []
-                        );
-
                         return;
                     }
 
@@ -899,7 +1022,25 @@
                                 ) + 'ms'
                             );
 
-                            renderResults(
+                            log(
+                                'RESULTS READY:',
+                                results.length
+                            );
+
+                            /*
+                             * Вставляем в актуальный DOM.
+                             */
+                            mountResults(
+                                activity,
+                                results,
+                                'results'
+                            );
+
+                            /*
+                             * И следим за Lampa,
+                             * чтобы она не удалила строку.
+                             */
+                            startDomWatch(
                                 activity,
                                 results
                             );
@@ -912,7 +1053,8 @@
                  */
                 loadKP(
                     function () {
-                        kpReady = true;
+                        kpReady =
+                            true;
 
                         log(
                             'KP READY'
@@ -943,7 +1085,8 @@
                         }
                     );
                 } else {
-                    wikidataReady = true;
+                    wikidataReady =
+                        true;
 
                     tryContinue();
                 }
@@ -965,7 +1108,9 @@
                         install() ||
                         attempts >= 120
                     ) {
-                        clearInterval(timer);
+                        clearInterval(
+                            timer
+                        );
                     }
                 },
                 500
