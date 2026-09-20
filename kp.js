@@ -1,15 +1,16 @@
-/* Kinopoisk Similar for Lampa v1.4.1
- * BUILD: 2026-09-20-18-30
+/* Kinopoisk Similar for Lampa v1.4.2
+ * BUILD: 2026-09-20-18-35
  *
  * TMDB detail -> IMDb -> Wikidata SPARQL -> KP ID -> KP /similars
- * Waits for the real visible Lampa rows before inserting.
+ * Uses Lampa.Reguest exactly like kp_source.js.
+ * Waits for native Lampa rows before inserting.
  */
 
 (function () {
     'use strict';
 
-    var VERSION = '1.4.1';
-    var BUILD = '2026-09-20-18-30';
+    var VERSION = '1.4.2';
+    var BUILD = '2026-09-20-18-35';
     var PREFIX = '[KP UI v' + VERSION + ']';
 
     console.log(PREFIX + ' VERSION:', VERSION);
@@ -41,64 +42,159 @@
 
     function decodeSecret(arr, key) {
         var result = '';
+        var password = (key || '') + '';
 
-        for (var i = 0; i < arr.length; i++) {
+        if (!arr || !password) return result;
+
+        var hash = '';
+
+        function salt(input) {
+            var str = (input || '') + '';
+            var hashValue = 0;
+
+            for (var i = 0; i < str.length; i++) {
+                var c = str.charCodeAt(i);
+                hashValue =
+                    (hashValue << 5) -
+                    hashValue +
+                    c;
+
+                hashValue =
+                    hashValue & hashValue;
+            }
+
+            var resultSalt = '';
+
+            for (
+                var j = 32 - 3, x = 0;
+                j >= 0;
+                x += 3, j -= 3
+            ) {
+                var value =
+                    (
+                        ((hashValue >>> x) & 7) << 3
+                    ) +
+                    ((hashValue >>> j) & 7);
+
+                resultSalt += String.fromCharCode(
+                    value < 26
+                        ? 97 + value
+                        : value < 52
+                            ? 39 + value
+                            : value - 4
+                );
+            }
+
+            return resultSalt;
+        }
+
+        hash =
+            salt(
+                '123456789' +
+                password
+            );
+
+        while (
+            hash.length < arr.length
+        ) {
+            hash += hash;
+        }
+
+        for (
+            var index = 0;
+            index < arr.length;
+            index++
+        ) {
             result += String.fromCharCode(
-                arr[i] ^ key.charCodeAt(i % key.length)
+                arr[index] ^
+                hash.charCodeAt(index)
             );
         }
 
         return result;
     }
 
-    var KP_API_KEY = decodeSecret([
-        46, 112, 67, 90, 13, 115, 6, 112, 126, 67, 41, 122,
-        16, 66, 0, 37, 5, 37, 126, 73, 127, 39, 17, 66,
-        82, 34, 80, 35, 99, 22, 44, 117, 70, 12, 2, 113
-    ], atob('MUtQcGFzc3dvcmQ='));
+    /*
+     * Exact decoder/key from current kp_source.js
+     */
+    var KP_API_KEY = decodeSecret(
+        [
+            46, 112, 67, 90, 13, 115, 6, 112,
+            126, 67, 41, 122, 16, 66, 0, 37,
+            5, 37, 126, 73, 127, 39, 17, 66,
+            82, 34, 80, 35, 99, 22, 44, 117,
+            70, 12, 2, 113
+        ],
+        atob('MUtQcGFzc3dvcmQ=')
+    );
 
-    var KP_PROXY = 'https://cors.kp556.workers.dev/';
-    var KP_API = 'https://kinopoiskapiunofficial.tech/';
+    var KP_PROXY =
+        'https://cors.kp556.workers.dev/';
 
-    function getRequest(url, success, error) {
-        if (
-            Lampa.Reguest &&
-            typeof Lampa.Reguest.silent === 'function'
-        ) {
-            Lampa.Reguest.silent(
-                url,
-                success,
-                error,
-                false,
-                {
-                    'X-API-KEY': KP_API_KEY,
-                    'Content-Type': 'application/json'
-                }
+    var KP_API =
+        'https://kinopoiskapiunofficial.tech/';
+
+    /*
+     * Use Lampa's native request implementation.
+     */
+    var network =
+        typeof Lampa.Reguest === 'function'
+            ? new Lampa.Reguest()
+            : null;
+
+    if (!network) {
+        log(
+            'ERROR: Lampa.Reguest unavailable'
+        );
+    } else {
+        log(
+            'Lampa.Reguest READY'
+        );
+    }
+
+    function request(url, success, error) {
+        if (!network) {
+            error(
+                new Error(
+                    'Lampa.Reguest unavailable'
+                )
             );
+
             return;
         }
 
-        fetch(url, {
-            headers: {
-                'X-API-KEY': KP_API_KEY,
-                'Content-Type': 'application/json'
-            }
-        })
-            .then(function (response) {
-                if (!response.ok) {
-                    throw new Error(
-                        'HTTP ' + response.status
-                    );
-                }
+        network.timeout(20000);
 
-                return response.json();
-            })
-            .then(success)
-            .catch(error);
+        network.silent(
+            url,
+            function (json) {
+                success(json);
+            },
+            function (a, c) {
+                log(
+                    'REQUEST ERROR:',
+                    a
+                );
+
+                error(a, c);
+            },
+            false,
+            {
+                headers: {
+                    'X-API-KEY':
+                        KP_API_KEY
+                }
+            }
+        );
     }
 
     function getCard(event) {
-        if (!event || !event.object) return null;
+        if (
+            !event ||
+            !event.object
+        ) {
+            return null;
+        }
 
         if (event.object.card) {
             return event.object.card;
@@ -147,18 +243,21 @@
         };
     }
 
-    /*
-     * IMPORTANT:
-     * This is the Wikidata route that previously returned
-     * KP ID 6385370 for tt33764258.
-     */
-    function getWikidataKpId(imdbId, start) {
+    function getWikidataKpId(
+        imdbId
+    ) {
         if (!imdbId) {
-            log('NO IMDB ID');
+            log(
+                'NO IMDB ID'
+            );
+
             return Promise.resolve(null);
         }
 
-        log('WIKIDATA SPARQL START:', imdbId);
+        log(
+            'WIKIDATA SPARQL START:',
+            imdbId
+        );
 
         var query =
             'SELECT ?item ?kp WHERE {' +
@@ -174,11 +273,15 @@
             encodeURIComponent(query) +
             '&format=json';
 
-        return fetch(url, {
-            headers: {
-                'Accept': 'application/sparql-results+json'
+        return fetch(
+            url,
+            {
+                headers: {
+                    'Accept':
+                        'application/sparql-results+json'
+                }
             }
-        })
+        )
             .then(function (response) {
                 log(
                     'WIKIDATA SPARQL HTTP:',
@@ -244,10 +347,14 @@
             });
     }
 
-    function getKpId(card, start) {
-        var ids = getIds(card);
+    function getKpId(card) {
+        var ids =
+            getIds(card);
 
-        log('IDS FROM LAMPA:', ids);
+        log(
+            'IDS FROM LAMPA:',
+            ids
+        );
 
         if (ids.kp) {
             log(
@@ -261,7 +368,10 @@
         }
 
         if (!ids.imdb) {
-            log('NO IMDB ID');
+            log(
+                'NO IMDB ID'
+            );
+
             return Promise.resolve(null);
         }
 
@@ -271,12 +381,13 @@
         );
 
         return getWikidataKpId(
-            ids.imdb,
-            start
+            ids.imdb
         );
     }
 
-    function loadSimilars(kpId, start) {
+    function loadSimilars(
+        kpId
+    ) {
         var url =
             KP_PROXY +
             KP_API +
@@ -284,50 +395,76 @@
             encodeURIComponent(kpId) +
             '/similars';
 
-        log('SIMILARS REQUEST:', url);
-        log('SIMILARS REQUEST START');
+        log(
+            'SIMILARS REQUEST:',
+            url
+        );
 
-        return new Promise(function (resolve, reject) {
-            getRequest(
-                url,
-                function (response) {
-                    log(
-                        'SIMILARS RESPONSE:',
+        log(
+            'SIMILARS REQUEST START'
+        );
+
+        return new Promise(
+            function (
+                resolve,
+                reject
+            ) {
+                request(
+                    url,
+                    function (
                         response
-                    );
+                    ) {
+                        log(
+                            'SIMILARS RESPONSE:',
+                            response
+                        );
 
-                    var items =
-                        response &&
-                        Array.isArray(
-                            response.items
-                        )
-                            ? response.items
-                            : [];
+                        var items =
+                            response &&
+                            Array.isArray(
+                                response.items
+                            )
+                                ? response.items
+                                : [];
 
-                    log(
-                        'RAW SIMILARS COUNT:',
-                        items.length
-                    );
+                        log(
+                            'RAW SIMILARS COUNT:',
+                            items.length
+                        );
 
-                    resolve(items);
-                },
-                function (error) {
-                    log(
-                        'SIMILARS REQUEST ERROR:',
+                        resolve(
+                            items
+                        );
+                    },
+                    function (
                         error
-                    );
+                    ) {
+                        log(
+                            'SIMILARS REQUEST ERROR:',
+                            error
+                        );
 
-                    reject(error);
-                }
-            );
-        });
+                        reject(
+                            error
+                        );
+                    }
+                );
+            }
+        );
     }
 
-    function escapeHtml(value) {
+    function escapeHtml(
+        value
+    ) {
         return String(
-            value == null ? '' : value
+            value == null
+                ? ''
+                : value
         )
-            .replace(/&/g, '&amp;')
+            .replace(
+                /&/g,
+                '&amp;'
+            )
             .replace(
                 /</g,
                 '&lt;'
@@ -346,7 +483,9 @@
             );
     }
 
-    function buildData(item) {
+    function buildData(
+        item
+    ) {
         var kpId =
             item.kinopoiskId ||
             item.filmId ||
@@ -375,42 +514,69 @@
             '';
 
         var rating =
-            item.ratingKinopoisk !== undefined &&
-            item.ratingKinopoisk !== null
+            item.ratingKinopoisk !==
+                undefined &&
+            item.ratingKinopoisk !==
+                null
                 ? item.ratingKinopoisk
                 : (
-                    item.ratingImdb !== undefined &&
-                    item.ratingImdb !== null
+                    item.ratingImdb !==
+                        undefined &&
+                    item.ratingImdb !==
+                        null
                         ? item.ratingImdb
                         : ''
                 );
 
         return {
-            id: 'KP_' + kpId,
-            source: 'KP',
-            kinopoisk_id: kpId,
+            id:
+                'KP_' +
+                kpId,
 
-            title: title,
+            source:
+                'KP',
+
+            kinopoisk_id:
+                kpId,
+
+            title:
+                title,
+
             original_title:
                 item.nameOriginal ||
                 item.nameEn ||
                 title,
 
-            year: year,
+            year:
+                year,
 
-            poster: poster,
-            img: poster,
+            poster:
+                poster,
 
-            vote_average: rating,
-            rating: rating,
+            img:
+                poster,
 
-            type: 'movie'
+            background_image:
+                poster,
+
+            vote_average:
+                rating,
+
+            rating:
+                rating,
+
+            type:
+                'movie'
         };
     }
 
-    function buildRow(items) {
+    function buildRow(
+        items
+    ) {
         var row =
-            document.createElement('div');
+            document.createElement(
+                'div'
+            );
 
         row.className =
             'items-line layer--visible layer--render kp-similar-line';
@@ -441,114 +607,135 @@
                 '.mapping--line'
             );
 
-        items.forEach(function (item) {
-            var data =
-                buildData(item);
+        items.forEach(
+            function (
+                item
+            ) {
+                var data =
+                    buildData(
+                        item
+                    );
 
-            var card =
-                document.createElement('div');
+                var card =
+                    document.createElement(
+                        'div'
+                    );
 
-            card.className =
-                'card selector layer--visible layer--render card--loaded';
+                card.className =
+                    'card selector layer--visible layer--render card--loaded';
 
-            card.setAttribute(
-                'data-kp-id',
-                data.kinopoisk_id
-            );
-
-            card.innerHTML =
-                '<div class="card__view">' +
-
-                    (
-                        data.poster
-                            ? '<img class="card__img" src="' +
-                              escapeHtml(
-                                  data.poster
-                              ) +
-                              '">'
-                            : ''
-                    ) +
-
-                    '<div class="card__icons">' +
-                        '<div class="card__icons-inner"></div>' +
-                    '</div>' +
-
-                    (
-                        data.rating !== ''
-                            ? '<div class="card__vote">' +
-                              escapeHtml(
-                                  data.rating
-                              ) +
-                              '</div>'
-                            : ''
-                    ) +
-
-                '</div>' +
-
-                '<div class="card__title">' +
-                    escapeHtml(
-                        data.title
-                    ) +
-                '</div>' +
-
-                (
-                    data.year
-                        ? '<div class="card__age">' +
-                          escapeHtml(
-                              data.year
-                          ) +
-                          '</div>'
-                        : ''
-                );
-
-            function openCard() {
-                log(
-                    'CARD OPEN:',
-                    data.title,
+                card.setAttribute(
+                    'data-kp-id',
                     data.kinopoisk_id
                 );
 
-                if (
-                    Lampa.Router &&
-                    typeof Lampa.Router.call ===
-                        'function'
-                ) {
-                    Lampa.Router.call(
-                        'full',
-                        data
+                card.setAttribute(
+                    'data-kp-version',
+                    VERSION
+                );
+
+                card.innerHTML =
+                    '<div class="card__view">' +
+
+                        (
+                            data.poster
+                                ? '<img class="card__img" src="' +
+                                  escapeHtml(
+                                      data.poster
+                                  ) +
+                                  '">'
+                                : ''
+                        ) +
+
+                        '<div class="card__icons">' +
+                            '<div class="card__icons-inner"></div>' +
+                        '</div>' +
+
+                        (
+                            data.rating !== ''
+                                ? '<div class="card__vote">' +
+                                  escapeHtml(
+                                      data.rating
+                                  ) +
+                                  '</div>'
+                                : ''
+                        ) +
+
+                    '</div>' +
+
+                    '<div class="card__title">' +
+                        escapeHtml(
+                            data.title
+                        ) +
+                    '</div>' +
+
+                    (
+                        data.year
+                            ? '<div class="card__age">' +
+                              escapeHtml(
+                                  data.year
+                              ) +
+                              '</div>'
+                            : ''
                     );
-                }
-            }
 
-            card.addEventListener(
-                'click',
-                function (event) {
-                    event.preventDefault();
-                    event.stopPropagation();
+                function openCard() {
+                    log(
+                        'CARD OPEN:',
+                        data.title,
+                        'KP:',
+                        data.kinopoisk_id
+                    );
 
-                    openCard();
-                },
-                true
-            );
-
-            card.addEventListener(
-                'keydown',
-                function (event) {
                     if (
-                        event.key === 'Enter' ||
-                        event.keyCode === 13
+                        Lampa.Router &&
+                        typeof Lampa.Router.call ===
+                            'function'
+                    ) {
+                        Lampa.Router.call(
+                            'full',
+                            data
+                        );
+                    }
+                }
+
+                card.addEventListener(
+                    'click',
+                    function (
+                        event
                     ) {
                         event.preventDefault();
                         event.stopPropagation();
 
                         openCard();
-                    }
-                },
-                true
-            );
+                    },
+                    true
+                );
 
-            body.appendChild(card);
-        });
+                card.addEventListener(
+                    'keydown',
+                    function (
+                        event
+                    ) {
+                        if (
+                            event.key ===
+                                'Enter' ||
+                            event.keyCode === 13
+                        ) {
+                            event.preventDefault();
+                            event.stopPropagation();
+
+                            openCard();
+                        }
+                    },
+                    true
+                );
+
+                body.appendChild(
+                    card
+                );
+            }
+        );
 
         return row;
     }
@@ -581,9 +768,12 @@
             i < rows.length;
             i++
         ) {
-            var row = rows[i];
+            var row =
+                rows[i];
 
-            if (!row.offsetParent) {
+            if (
+                !row.offsetParent
+            ) {
                 continue;
             }
 
@@ -594,14 +784,18 @@
                 rect.width > 0 &&
                 rect.height > 0
             ) {
-                result.push(row);
+                result.push(
+                    row
+                );
             }
         }
 
         return result;
     }
 
-    function getRowTitle(row) {
+    function getRowTitle(
+        row
+    ) {
         var title =
             row.querySelector(
                 '.items-line__title'
@@ -617,10 +811,17 @@
             getVisibleRows();
 
         var result = {
-            similar: null,
-            recommendations: null,
-            actors: null,
-            director: null
+            similar:
+                null,
+
+            recommendations:
+                null,
+
+            actors:
+                null,
+
+            director:
+                null
         };
 
         for (
@@ -638,7 +839,8 @@
                     'похожие'
                 ) !== -1
             ) {
-                result.similar = rows[i];
+                result.similar =
+                    rows[i];
             }
 
             if (
@@ -677,11 +879,6 @@
         return result;
     }
 
-    /*
-     * IMPORTANT:
-     * Lampa builds these rows asynchronously.
-     * We wait until the actual visible rows exist.
-     */
     function waitForRows(
         row,
         start,
@@ -707,7 +904,9 @@
             !!found.director
         );
 
-        if (found.similar) {
+        if (
+            found.similar
+        ) {
             found.similar.insertAdjacentElement(
                 'afterend',
                 row
@@ -784,34 +983,42 @@
             ).length
         );
 
+        var rect =
+            row.getBoundingClientRect();
+
         log(
             'ROW RECT:',
-            row.getBoundingClientRect().width,
-            row.getBoundingClientRect().height
+            rect.width,
+            rect.height
         );
 
         log(
             'TOTAL:',
-            elapsed(start) + 'ms'
+            elapsed(start) +
+            'ms'
         );
     }
 
-    function process(event) {
-        var start = now();
+    function process(
+        event
+    ) {
+        var start =
+            now();
 
         if (working) {
             log(
                 'ALREADY WORKING'
             );
+
             return;
         }
-
-        var card =
-            getCard(event);
 
         log(
             'FULL COMPLETE EVENT'
         );
+
+        var card =
+            getCard(event);
 
         log(
             'CURRENT CARD:',
@@ -822,6 +1029,7 @@
             log(
                 'NO CURRENT CARD'
             );
+
             return;
         }
 
@@ -838,82 +1046,106 @@
             log(
                 'SAME CARD, SKIP'
             );
+
             return;
         }
 
-        currentKey = key;
-        working = true;
+        currentKey =
+            key;
+
+        working =
+            true;
 
         removeOldRows();
 
         getKpId(
-            card,
-            start
+            card
         )
-            .then(function (kpId) {
-                if (!kpId) {
-                    throw new Error(
-                        'Kinopoisk ID not found'
-                    );
-                }
-
-                log(
-                    'FINAL KP ID:',
+            .then(
+                function (
                     kpId
-                );
+                ) {
+                    if (!kpId) {
+                        throw new Error(
+                            'Kinopoisk ID not found'
+                        );
+                    }
 
-                return loadSimilars(
-                    kpId,
-                    start
-                );
-            })
-            .then(function (items) {
-                log(
-                    'SIMILAR COUNT:',
-                    items.length
-                );
-
-                if (!items.length) {
                     log(
-                        'NO SIMILARS'
+                        'FINAL KP ID:',
+                        kpId
                     );
-                    return;
+
+                    return loadSimilars(
+                        kpId
+                    );
                 }
+            )
+            .then(
+                function (
+                    items
+                ) {
+                    log(
+                        'SIMILAR COUNT:',
+                        items.length
+                    );
 
-                log(
-                    'RESULTS READY:',
-                    items.length
-                );
+                    log(
+                        'TOTAL PIPELINE:',
+                        elapsed(start) +
+                        'ms'
+                    );
 
-                var row =
-                    buildRow(items);
+                    if (
+                        !items.length
+                    ) {
+                        log(
+                            'NO SIMILARS'
+                        );
 
-                /*
-                 * Start waiting for the REAL
-                 * native Lampa rows.
-                 */
-                log(
-                    'WAITING FOR REAL LAMPA ROWS'
-                );
+                        return;
+                    }
 
-                waitForRows(
-                    row,
-                    start,
-                    0
-                );
-            })
-            .catch(function (error) {
-                log(
-                    'PIPELINE ERROR:',
-                    error &&
-                    error.message
-                        ? error.message
-                        : error
-                );
-            })
-            .finally(function () {
-                working = false;
-            });
+                    log(
+                        'RESULTS READY:',
+                        items.length
+                    );
+
+                    var row =
+                        buildRow(
+                            items
+                        );
+
+                    log(
+                        'WAITING FOR REAL LAMPA ROWS'
+                    );
+
+                    waitForRows(
+                        row,
+                        start,
+                        0
+                    );
+                }
+            )
+            .catch(
+                function (
+                    error
+                ) {
+                    log(
+                        'PIPELINE ERROR:',
+                        error &&
+                        error.message
+                            ? error.message
+                            : error
+                    );
+                }
+            )
+            .finally(
+                function () {
+                    working =
+                        false;
+                }
+            );
     }
 
     if (
@@ -923,17 +1155,22 @@
     ) {
         Lampa.Listener.follow(
             'full',
-            function (event) {
+            function (
+                event
+            ) {
                 if (
                     !event ||
-                    event.type !== 'complite'
+                    event.type !==
+                        'complite'
                 ) {
                     return;
                 }
 
                 setTimeout(
                     function () {
-                        process(event);
+                        process(
+                            event
+                        );
                     },
                     50
                 );
