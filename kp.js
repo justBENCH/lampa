@@ -1,7 +1,6 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.6.0';
     var VERSION = '1.6.2';
     var KP_SOURCE_URL = 'https://nb557.github.io/plugins/kp_source.js';
     var loading = false;
@@ -65,10 +64,6 @@
     }
 
     function resultsOf(data) {
-        if (Array.isArray(data)) return data;
-        if (data && Array.isArray(data.results)) return data.results;
-        if (data && data.body && Array.isArray(data.body.results)) return data.body.results;
-        return [];
         var groups = Array.isArray(data) ? data : [data];
         var results = [];
 
