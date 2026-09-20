@@ -1,8 +1,8 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.2.0';
-    var BUILD = '2026-09-20-18-50';
+    var VERSION = '1.3.0';
+    var BUILD = '2026-09-20-18-40';
     var PLUGIN = 'kp_recommendations_test';
 
     var START_TIME = performance.now();
@@ -50,202 +50,202 @@
         version: VERSION
     };
 
-    var KP_SOURCE_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=120';
+    /*
+     * Актуальный proxy из kp_source.js
+     */
+    var KP_PROXY =
+        'https://cors.kp556.workers.dev/';
 
-    function loadKP(callback) {
-        if (
-            window.kp_source_plugin &&
-            window.Lampa &&
-            Lampa.Api &&
-            Lampa.Api.sources &&
-            Lampa.Api.sources.KP
-        ) {
-            log('KP ALREADY LOADED');
+    var KP_API =
+        'https://kinopoiskapiunofficial.tech/';
 
-            callback();
-
-            return;
-        }
-
-        log('KP LOAD START');
-
-        var script =
-            document.createElement('script');
-
-        script.src =
-            KP_SOURCE_URL;
-
-        script.onload =
-            function () {
-                log(
-                    'KP SOURCE NETWORK LOADED'
-                );
-
-                var attempts = 0;
-
-                var timer =
-                    setInterval(
-                        function () {
-                            attempts++;
-
-                            if (
-                                window.kp_source_plugin &&
-                                Lampa.Api &&
-                                Lampa.Api.sources &&
-                                Lampa.Api.sources.KP
-                            ) {
-                                clearInterval(timer);
-
-                                log(
-                                    'KP SOURCE REGISTERED'
-                                );
-
-                                callback();
-
-                                return;
-                            }
-
-                            if (
-                                attempts >= 40
-                            ) {
-                                clearInterval(timer);
-
-                                log(
-                                    'KP REGISTRATION TIMEOUT'
-                                );
-                            }
-                        },
-                        100
-                    );
-            };
-
-        script.onerror =
-            function () {
-                log(
-                    'KP SOURCE LOAD ERROR'
-                );
-            };
-
-        document.head.appendChild(
-            script
+    /*
+     * Это те же значения, которые сейчас
+     * используются внутри kp_source.js.
+     *
+     * Ключ восстанавливается локально,
+     * напрямую в коде его не храним.
+     */
+    function startsWith(
+        str,
+        search
+    ) {
+        return (
+            String(str)
+                .lastIndexOf(
+                    search,
+                    0
+                ) === 0
         );
     }
 
-    function getValue(
-        object,
-        names
-    ) {
-        if (
-            !object ||
-            typeof object !== 'object'
-        ) {
-            return null;
-        }
+    function salt(input) {
+        var str =
+            (input || '') + '';
+
+        var hash = 0;
 
         for (
             var i = 0;
-            i < names.length;
+            i < str.length;
             i++
         ) {
-            var value;
+            var c =
+                str.charCodeAt(i);
 
-            try {
-                value =
-                    object[names[i]];
-            } catch (e) {
-                continue;
-            }
+            hash =
+                (hash << 5) -
+                hash +
+                c;
 
-            if (
-                value !== null &&
-                value !== undefined &&
-                String(value) !== ''
-            ) {
-                return value;
-            }
+            hash =
+                hash & hash;
         }
 
-        return null;
+        var result = '';
+
+        for (
+            var _i = 0,
+                j = 32 - 3;
+            j >= 0;
+            _i += 3,
+            j -= 3
+        ) {
+            var x =
+                (
+                    (
+                        hash >>> _i & 7
+                    ) << 3
+                ) +
+                (
+                    hash >>> j & 7
+                );
+
+            result +=
+                String.fromCharCode(
+                    x < 26
+                        ? 97 + x
+                        : x < 52
+                            ? 39 + x
+                            : x - 4
+                );
+        }
+
+        return result;
     }
 
-    function extractIds(event) {
-        var objects = [
-            event &&
-                event.object &&
-                event.object.card,
+    function decodeSecret(
+        input,
+        password
+    ) {
+        var result = '';
 
-            event &&
-                event.object &&
-                event.object.movie,
+        password =
+            (password || '') + '';
 
-            event &&
-                event.object,
-
-            event &&
-                event.link
-        ];
-
-        var result = {
-            tmdb: null,
-            kp: null,
-            imdb: null
-        };
-
-        for (
-            var i = 0;
-            i < objects.length;
-            i++
+        if (
+            input &&
+            password
         ) {
-            var object =
-                objects[i];
+            var hash =
+                salt(
+                    '123456789' +
+                    password
+                );
 
-            if (!object) {
-                continue;
+            while (
+                hash.length <
+                input.length
+            ) {
+                hash += hash;
             }
 
-            if (!result.kp) {
-                result.kp =
-                    getValue(
-                        object,
-                        [
-                            'kinopoisk_id',
-                            'kinopoiskId',
-                            'kp_id',
-                            'kpId'
-                        ]
-                    );
-            }
+            var i = 0;
 
-            if (!result.tmdb) {
-                result.tmdb =
-                    getValue(
-                        object,
-                        [
-                            'tmdb_id',
-                            'tmdbId',
-                            'id_tmdb',
-                            'tmdb'
-                        ]
+            while (
+                i < input.length
+            ) {
+                result +=
+                    String.fromCharCode(
+                        input[i] ^
+                        hash.charCodeAt(i)
                     );
-            }
 
-            if (!result.imdb) {
-                result.imdb =
-                    getValue(
-                        object,
-                        [
-                            'imdb_id',
-                            'imdbId',
-                            'imdb'
-                        ]
-                    );
+                i++;
             }
         }
 
         return result;
     }
 
+    /*
+     * Текущий ключ из kp_source.js.
+     */
+    var KP_KEY =
+        decodeSecret(
+            [
+                46,112,67,90,
+                13,115,6,112,
+                126,67,41,122,
+                16,66,0,37,
+                5,37,126,73,
+                127,39,17,66,
+                82,34,80,35,
+                99,22,44,117,
+                70,12,2,113
+            ],
+            atob('MUtQcGFzc3dvcmQ=')
+        );
+
+    log(
+        'API CONFIG READY'
+    );
+
+    /*
+     * Универсальный GET через Lampa.Reguest.
+     */
+    function request(
+        url,
+        callback,
+        errorCallback
+    ) {
+        var network =
+            new Lampa.Reguest();
+
+        network.timeout(
+            10000
+        );
+
+        network.silent(
+            url,
+            function (json) {
+                callback(
+                    json
+                );
+            },
+            function (a, c) {
+                if (
+                    errorCallback
+                ) {
+                    errorCallback(
+                        a,
+                        c
+                    );
+                }
+            },
+            false,
+            {
+                headers: {
+                    'X-API-KEY':
+                        KP_KEY
+                }
+            }
+        );
+    }
+
+    /*
+     * IMDb -> Wikidata -> KP.
+     */
     function getKpIdFromWikidata(
         imdbId,
         callback
@@ -255,11 +255,31 @@
             imdbId
         );
 
+        var finished =
+            false;
+
+        function finish(
+            value
+        ) {
+            if (finished) {
+                return;
+            }
+
+            finished = true;
+
+            callback(
+                value
+            );
+        }
+
         var query =
             'SELECT ?item ?kp WHERE {' +
             '?item wdt:P345 "' +
             String(imdbId)
-                .replace(/"/g, '') +
+                .replace(
+                    /"/g,
+                    ''
+                ) +
             '". ' +
             '?item wdt:P2603 ?kp. ' +
             '} LIMIT 1';
@@ -267,8 +287,28 @@
         var url =
             'https://query.wikidata.org/sparql' +
             '?query=' +
-            encodeURIComponent(query) +
+            encodeURIComponent(
+                query
+            ) +
             '&format=json';
+
+        /*
+         * Таймаут Wikidata.
+         */
+        setTimeout(
+            function () {
+                if (!finished) {
+                    log(
+                        'WIKIDATA TIMEOUT'
+                    );
+
+                    finish(
+                        null
+                    );
+                }
+            },
+            5000
+        );
 
         fetch(
             url,
@@ -287,7 +327,9 @@
                         response.status
                     );
 
-                    if (!response.ok) {
+                    if (
+                        !response.ok
+                    ) {
                         throw new Error(
                             'HTTP ' +
                             response.status
@@ -315,7 +357,9 @@
                             'WIKIDATA KP ID NOT FOUND'
                         );
 
-                        callback(null);
+                        finish(
+                            null
+                        );
 
                         return;
                     }
@@ -329,7 +373,7 @@
                         kp
                     );
 
-                    callback(
+                    finish(
                         kp || null
                     );
                 }
@@ -341,77 +385,239 @@
                         error
                     );
 
-                    callback(null);
+                    finish(
+                        null
+                    );
                 }
             );
     }
 
-    function getKPFull(
+    /*
+     * Прямой запрос similars.
+     *
+     * ВАЖНО:
+     * Больше не вызываем KP.full(),
+     * поэтому sequels_and_prequels 404
+     * больше не задерживает рекомендации.
+     */
+    function getKPSimilars(
         kpId,
         callback
     ) {
+        var apiUrl =
+            'api/v2.2/films/' +
+            encodeURIComponent(
+                kpId
+            ) +
+            '/similars';
+
+        var proxyUrl =
+            KP_PROXY +
+            KP_API +
+            apiUrl;
+
         log(
-            'KP FULL START:',
-            kpId
+            'SIMILARS REQUEST:',
+            apiUrl
         );
 
-        Lampa.Api.sources.KP.full(
-            {
-                card: {
-                    source: 'KP',
-                    kinopoisk_id:
-                        kpId
-                }
-            },
+        log(
+            'SIMILARS REQUEST START'
+        );
 
+        request(
+            proxyUrl,
             function (json) {
                 log(
-                    'KP FULL RESPONSE'
+                    'SIMILARS RESPONSE:',
+                    json
                 );
 
-                if (
-                    !json ||
-                    !json.simular ||
-                    !Array.isArray(
-                        json.simular.results
+                var items =
+                    json &&
+                    Array.isArray(
+                        json.items
                     )
-                ) {
-                    log(
-                        'KP SIMILAR DATA EMPTY'
-                    );
-
-                    callback([]);
-
-                    return;
-                }
+                        ? json.items
+                        : [];
 
                 log(
-                    'SIMILAR COUNT:',
-                    json
-                        .simular
-                        .results
-                        .length
+                    'RAW SIMILARS COUNT:',
+                    items.length
                 );
 
                 callback(
-                    json
-                        .simular
-                        .results
+                    items
                 );
             },
-
-            function (error) {
+            function (
+                error,
+                text
+            ) {
                 log(
-                    'KP FULL ERROR:',
-                    error
+                    'SIMILARS ERROR:',
+                    error,
+                    text
                 );
 
-                callback([]);
+                callback(
+                    []
+                );
             }
         );
     }
 
-    function getTitle(item) {
+    function getValue(
+        object,
+        names
+    ) {
+        if (
+            !object ||
+            typeof object !== 'object'
+        ) {
+            return null;
+        }
+
+        for (
+            var i = 0;
+            i < names.length;
+            i++
+        ) {
+            var value;
+
+            try {
+                value =
+                    object[
+                        names[i]
+                    ];
+            } catch (e) {
+                continue;
+            }
+
+            if (
+                value !== null &&
+                value !== undefined &&
+                String(value) !== ''
+            ) {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    function convertItem(
+        item
+    ) {
+        var kpId =
+            getValue(
+                item,
+                [
+                    'kinopoiskId',
+                    'filmId',
+                    'kinopoisk_id'
+                ]
+            );
+
+        var type =
+            (
+                !item.type ||
+                item.type === 'FILM' ||
+                item.type === 'VIDEO'
+            )
+                ? 'movie'
+                : 'tv';
+
+        var title =
+            item.nameRu ||
+            item.nameEn ||
+            item.nameOriginal ||
+            '';
+
+        var originalTitle =
+            item.nameOriginal ||
+            item.nameEn ||
+            item.nameRu ||
+            '';
+
+        var poster =
+            item.posterUrlPreview ||
+            item.posterUrl ||
+            '';
+
+        var year =
+            item.year ||
+            '';
+
+        return {
+            source: 'KP',
+
+            type: type,
+
+            adult: false,
+
+            id:
+                'KP_' +
+                kpId,
+
+            title:
+                title,
+
+            original_title:
+                originalTitle,
+
+            overview:
+                item.description ||
+                item.shortDescription ||
+                '',
+
+            img:
+                poster,
+
+            background_image:
+                item.coverUrl ||
+                item.posterUrl ||
+                poster,
+
+            release_date:
+                String(
+                    year || ''
+                ),
+
+            year:
+                year,
+
+            vote_average:
+                +item.rating ||
+                +item.ratingKinopoisk ||
+                0,
+
+            kp_rating:
+                +item.rating ||
+                +item.ratingKinopoisk ||
+                0,
+
+            vote_count:
+                item.ratingVoteCount ||
+                item.ratingKinopoiskVoteCount ||
+                0,
+
+            kinopoisk_id:
+                kpId,
+
+            imdb_id:
+                item.imdbId ||
+                '',
+
+            imdb_rating:
+                +item.ratingImdb ||
+                0
+        };
+    }
+
+    function getTitle(
+        item
+    ) {
         return (
             item.title ||
             item.name ||
@@ -422,7 +628,9 @@
         );
     }
 
-    function getYear(item) {
+    function getYear(
+        item
+    ) {
         return (
             item.year ||
             item.release_year ||
@@ -439,7 +647,9 @@
         );
     }
 
-    function getPoster(item) {
+    function getPoster(
+        item
+    ) {
         return (
             item.img ||
             item.poster ||
@@ -451,8 +661,11 @@
         );
     }
 
-    function getVote(item) {
+    function getVote(
+        item
+    ) {
         return (
+            item.vote_average ||
             item.vote ||
             item.rating ||
             item.rating_kp ||
@@ -461,97 +674,22 @@
         );
     }
 
-    /*
-     * Делаем полноценные данные Lampa
-     * для Router.call('full', data).
-     */
-    function getCardData(item) {
-        var kpId =
-            getValue(
-                item,
-                [
-                    'kinopoisk_id',
-                    'kinopoiskId',
-                    'kp_id',
-                    'kpId',
-                    'id'
-                ]
-            );
-
-        var title =
-            getTitle(item);
-
-        var year =
-            getYear(item);
-
-        var poster =
-            getPoster(item);
-
-        var data = {};
-
-        /*
-         * Сохраняем исходные поля KP.
-         */
-        for (
-            var key in item
-        ) {
-            if (
-                Object.prototype.hasOwnProperty.call(
-                    item,
-                    key
-                )
-            ) {
-                data[key] =
-                    item[key];
-            }
-        }
-
-        /*
-         * Поля, необходимые Lampa.
-         */
-        data.source = 'KP';
-
-        if (kpId) {
-            data.kinopoisk_id =
-                kpId;
-
-            data.id =
-                kpId;
-        }
-
-        data.title =
-            title;
-
-        if (year) {
-            data.year =
-                year;
-        }
-
-        if (poster) {
-            data.img =
-                poster;
-
-            data.poster =
-                poster;
-        }
-
-        return data;
-    }
-
     function openCard(
         item
     ) {
         var data =
-            getCardData(item);
+            convertItem(
+                item
+            );
 
         log(
-            'OPEN CARD:',
-            data
+            'OPEN KP CARD:',
+            data.kinopoisk_id,
+            data.title
         );
 
         if (
-            typeof Router !== 'undefined' &&
-            Router &&
+            window.Router &&
             typeof Router.call ===
                 'function'
         ) {
@@ -564,7 +702,7 @@
         }
 
         log(
-            'ERROR: Router.call unavailable'
+            'ROUTER.CALL UNAVAILABLE'
         );
     }
 
@@ -572,16 +710,24 @@
         item
     ) {
         var title =
-            getTitle(item);
+            getTitle(
+                item
+            );
 
         var year =
-            getYear(item);
+            getYear(
+                item
+            );
 
         var poster =
-            getPoster(item);
+            getPoster(
+                item
+            );
 
         var vote =
-            getVote(item);
+            getVote(
+                item
+            );
 
         var card =
             $(
@@ -658,9 +804,6 @@
                 );
         }
 
-        /*
-         * Lampa navigation.
-         */
         card.on(
             'hover:enter',
             function () {
@@ -670,9 +813,6 @@
             }
         );
 
-        /*
-         * Для мыши/обычного click.
-         */
         card.on(
             'click',
             function () {
@@ -725,103 +865,72 @@
         return line;
     }
 
-    /*
-     * Ищем нативные строки.
-     */
-    function getRows(
-        root
-    ) {
-        var rows = [];
-
-        root
-            .find(
-                '.items-line'
-            )
-            .each(
-                function () {
-                    var row =
-                        $(this);
-
-                    var title =
-                        row
-                            .find(
-                                '.items-line__title'
-                            )
-                            .first()
-                            .text()
-                            .trim();
-
-                    rows.push({
-                        el: row,
-                        title: title
-                    });
-                }
-            );
-
-        return rows;
-    }
-
-    /*
-     * Правильная позиция:
-     *
-     * Комментарии
-     * ...
-     * Похожие
-     * Рекомендации Кинопоиска
-     * Рекомендации
-     *
-     * Если "Похожие" нет —
-     * ставим перед нативными "Рекомендации".
-     */
     function insertLine(
         root,
         line
     ) {
         var rows =
-            getRows(
-                root
+            root.find(
+                '.items-line'
             );
 
-        log(
-            'NATIVE ROWS:',
-            rows.map(
-                function (row) {
-                    return row.title;
-                }
-            )
-        );
-
         var similar =
+            null;
+
+        var director =
             null;
 
         var recommendations =
             null;
 
-        for (
-            var i = 0;
-            i < rows.length;
-            i++
-        ) {
-            if (
-                rows[i].title ===
-                'Похожие'
-            ) {
-                similar =
-                    rows[i].el;
-            }
+        rows.each(
+            function () {
+                var row =
+                    $(this);
 
-            if (
-                rows[i].title ===
-                'Рекомендации'
-            ) {
-                recommendations =
-                    rows[i].el;
+                var title =
+                    row
+                        .find(
+                            '.items-line__title'
+                        )
+                        .first()
+                        .text()
+                        .trim();
+
+                if (
+                    title ===
+                    'Похожие'
+                ) {
+                    similar =
+                        row;
+                }
+
+                if (
+                    title ===
+                    'Режиссёр' ||
+                    title ===
+                    'Режиссеры'
+                ) {
+                    director =
+                        row;
+                }
+
+                if (
+                    title ===
+                    'Рекомендации'
+                ) {
+                    recommendations =
+                        row;
+                }
             }
-        }
+        );
 
         /*
-         * Вариант 1:
-         * после "Похожие".
+         * Основной вариант:
+         *
+         * Похожие
+         * Рекомендации Кинопоиска
+         * Режиссёр
          */
         if (
             similar &&
@@ -832,15 +941,36 @@
             );
 
             log(
-                'INSERTED AFTER "Похожие"'
+                'INSERT AFTER "Похожие"'
             );
 
-            return true;
+            return;
         }
 
         /*
-         * Вариант 2:
-         * перед обычными "Рекомендации".
+         * Если Похожие отсутствует:
+         *
+         * Рекомендации Кинопоиска
+         * Режиссёр
+         */
+        if (
+            director &&
+            director.length
+        ) {
+            director.before(
+                line
+            );
+
+            log(
+                'INSERT BEFORE "Режиссёр"'
+            );
+
+            return;
+        }
+
+        /*
+         * Последний вариант —
+         * перед обычными Рекомендациями.
          */
         if (
             recommendations &&
@@ -851,72 +981,19 @@
             );
 
             log(
-                'INSERTED BEFORE "Рекомендации"'
+                'INSERT BEFORE "Рекомендации"'
             );
 
-            return true;
+            return;
         }
 
-        /*
-         * Вариант 3:
-         * перед первым Director/Actors.
-         */
-        var director =
-            root
-                .find(
-                    '.items-line__title'
-                )
-                .filter(
-                    function () {
-                        var text =
-                            $(this)
-                                .text()
-                                .trim();
-
-                        return (
-                            text ===
-                                'Режиссёр' ||
-                            text ===
-                                'Режиссеры' ||
-                            text ===
-                                'Актёры' ||
-                            text ===
-                                'Актеры'
-                        );
-                    }
-                )
-                .first();
-
-        if (
-            director.length
-        ) {
-            director
-                .closest(
-                    '.items-line'
-                )
-                .before(
-                    line
-                );
-
-            log(
-                'INSERTED BEFORE PEOPLE ROW'
-            );
-
-            return true;
-        }
-
-        /*
-         * Последний fallback.
-         */
         root.append(
             line
         );
 
         log(
-            'INSERTED AT ROOT FALLBACK'
+            'INSERT ROOT FALLBACK'
         );
-
-        return true;
     }
 
     function render(
@@ -942,10 +1019,6 @@
             return;
         }
 
-        /*
-         * Удаляем старую строку,
-         * если она есть.
-         */
         root
             .find(
                 '.kp-recommendations-line'
@@ -1063,20 +1136,6 @@
                     'FULL COMPLETE EVENT'
                 );
 
-                log(
-                    'CURRENT CARD:',
-                    {
-                        title:
-                            root
-                                .find(
-                                    '.full-start-new__title'
-                                )
-                                .first()
-                                .text()
-                                .trim()
-                    }
-                );
-
                 var ids =
                     extractIds(
                         event
@@ -1087,51 +1146,27 @@
                     ids
                 );
 
-                var kpReady =
-                    false;
-
-                var wikidataReady =
-                    false;
-
-                var directKpId =
-                    ids.kp ||
-                    null;
-
-                var wikidataKpId =
-                    null;
-
-                function tryContinue() {
-                    if (
-                        !kpReady ||
-                        !wikidataReady
-                    ) {
-                        return;
-                    }
-
-                    var finalKpId =
-                        directKpId ||
-                        wikidataKpId;
-
-                    if (
-                        !finalKpId
-                    ) {
-                        log(
-                            'NO KP ID'
-                        );
-
-                        return;
-                    }
-
+                /*
+                 * Уже есть KP ID.
+                 */
+                if (
+                    ids.kp
+                ) {
                     log(
-                        'FINAL KP ID:',
-                        finalKpId
+                        'DIRECT KP ID:',
+                        ids.kp
                     );
 
-                    getKPFull(
-                        finalKpId,
+                    getKPSimilars(
+                        ids.kp,
                         function (
-                            results
+                            raw
                         ) {
+                            var results =
+                                raw.map(
+                                    convertItem
+                                );
+
                             log(
                                 'TOTAL PIPELINE:',
                                 Math.round(
@@ -1140,69 +1175,176 @@
                                 ) + 'ms'
                             );
 
-                            log(
-                                'RESULTS READY:',
-                                results.length
-                            );
-
                             render(
                                 activity,
                                 results
                             );
                         }
                     );
+
+                    return;
                 }
-
-                /*
-                 * KP source.
-                 */
-                loadKP(
-                    function () {
-                        kpReady =
-                            true;
-
-                        log(
-                            'KP READY'
-                        );
-
-                        tryContinue();
-                    }
-                );
 
                 /*
                  * IMDb -> Wikidata.
                  */
                 if (
-                    ids.imdb
+                    !ids.imdb
                 ) {
-                    getKpIdFromWikidata(
-                        ids.imdb,
-                        function (
-                            value
+                    log(
+                        'NO IMDb ID'
+                    );
+
+                    return;
+                }
+
+                log(
+                    'IMDb FOUND:',
+                    ids.imdb
+                );
+
+                getKpIdFromWikidata(
+                    ids.imdb,
+                    function (
+                        kpId
+                    ) {
+                        if (
+                            !kpId
                         ) {
-                            wikidataKpId =
-                                value;
-
-                            wikidataReady =
-                                true;
-
                             log(
-                                'WIKIDATA READY'
+                                'NO KP ID'
                             );
 
-                            tryContinue();
+                            return;
                         }
-                    );
-                } else {
-                    wikidataReady =
-                        true;
 
-                    tryContinue();
-                }
+                        log(
+                            'FINAL KP ID:',
+                            kpId
+                        );
+
+                        getKPSimilars(
+                            kpId,
+                            function (
+                                raw
+                            ) {
+                                var results =
+                                    raw.map(
+                                        convertItem
+                                    );
+
+                                log(
+                                    'TOTAL PIPELINE:',
+                                    Math.round(
+                                        performance.now() -
+                                        eventStart
+                                    ) + 'ms'
+                                );
+
+                                log(
+                                    'RESULTS READY:',
+                                    results.length
+                                );
+
+                                render(
+                                    activity,
+                                    results
+                                );
+                            }
+                        );
+                    }
+                );
             }
         );
 
         return true;
+    }
+
+    function extractIds(
+        event
+    ) {
+        var objects = [
+            event &&
+                event.object &&
+                event.object.card,
+
+            event &&
+                event.object &&
+                event.object.movie,
+
+            event &&
+                event.object,
+
+            event &&
+                event.link
+        ];
+
+        var result = {
+            tmdb: null,
+            kp: null,
+            imdb: null
+        };
+
+        for (
+            var i = 0;
+            i < objects.length;
+            i++
+        ) {
+            var object =
+                objects[i];
+
+            if (
+                !object
+            ) {
+                continue;
+            }
+
+            if (
+                !result.kp
+            ) {
+                result.kp =
+                    getValue(
+                        object,
+                        [
+                            'kinopoisk_id',
+                            'kinopoiskId',
+                            'kp_id',
+                            'kpId'
+                        ]
+                    );
+            }
+
+            if (
+                !result.tmdb
+            ) {
+                result.tmdb =
+                    getValue(
+                        object,
+                        [
+                            'tmdb_id',
+                            'tmdbId',
+                            'id_tmdb',
+                            'tmdb'
+                        ]
+                    );
+            }
+
+            if (
+                !result.imdb
+            ) {
+                result.imdb =
+                    getValue(
+                        object,
+                        [
+                            'imdb_id',
+                            'imdbId',
+                            'imdb'
+                        ]
+                    );
+            }
+        }
+
+        return result;
     }
 
     if (
