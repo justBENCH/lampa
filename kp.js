@@ -1,1373 +1,918 @@
+/* Kinopoisk Similar for Lampa v1.4.0
+ * BUILD: 2026-09-20-18-20
+ *
+ * TMDB detail -> IMDb -> Wikidata -> KP ID -> KP /similars
+ * Inserts the real DOM row directly into the visible Lampa page.
+ */
+
 (function () {
     'use strict';
 
-    var VERSION = '1.3.0';
-    var BUILD = '2026-09-20-18-40';
-    var PLUGIN = 'kp_recommendations_test';
+    var VERSION = '1.4.0';
+    var BUILD = '2026-09-20-18-20';
+    var PREFIX = '[KP UI v' + VERSION + ']';
 
-    var START_TIME = performance.now();
+    console.log(PREFIX + ' VERSION:', VERSION);
+    console.log(PREFIX + ' BUILD:', BUILD);
 
-    console.log('[KP UI] ========================================');
-    console.log('[KP UI] VERSION:', VERSION);
-    console.log('[KP UI] BUILD:', BUILD);
-    console.log('[KP UI] START:', new Date().toISOString());
-    console.log('[KP UI] ========================================');
+    var Lampa = window.Lampa;
 
-    function elapsed() {
-        return Math.round(
-            performance.now() - START_TIME
-        );
-    }
-
-    function log() {
-        var args =
-            Array.prototype.slice.call(arguments);
-
-        args.unshift(
-            '[T+' + elapsed() + 'ms]',
-            '[KP UI v' + VERSION + ']'
-        );
-
-        console.log.apply(
-            console,
-            args
-        );
-    }
-
-    if (
-        window[PLUGIN] &&
-        window[PLUGIN].version === VERSION
-    ) {
-        console.log(
-            '[KP UI] ALREADY INSTALLED:',
-            VERSION
-        );
-
+    if (!Lampa) {
+        console.log(PREFIX, 'Lampa not found');
         return;
     }
 
-    window[PLUGIN] = {
-        version: VERSION
-    };
+    var currentKey = null;
+    var working = false;
 
-    /*
-     * Актуальный proxy из kp_source.js
-     */
-    var KP_PROXY =
-        'https://cors.kp556.workers.dev/';
-
-    var KP_API =
-        'https://kinopoiskapiunofficial.tech/';
-
-    /*
-     * Это те же значения, которые сейчас
-     * используются внутри kp_source.js.
-     *
-     * Ключ восстанавливается локально,
-     * напрямую в коде его не храним.
-     */
-    function startsWith(
-        str,
-        search
-    ) {
-        return (
-            String(str)
-                .lastIndexOf(
-                    search,
-                    0
-                ) === 0
-        );
+    function log() {
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift(PREFIX);
+        console.log.apply(console, args);
     }
 
-    function salt(input) {
-        var str =
-            (input || '') + '';
-
-        var hash = 0;
-
-        for (
-            var i = 0;
-            i < str.length;
-            i++
-        ) {
-            var c =
-                str.charCodeAt(i);
-
-            hash =
-                (hash << 5) -
-                hash +
-                c;
-
-            hash =
-                hash & hash;
-        }
-
-        var result = '';
-
-        for (
-            var _i = 0,
-                j = 32 - 3;
-            j >= 0;
-            _i += 3,
-            j -= 3
-        ) {
-            var x =
-                (
-                    (
-                        hash >>> _i & 7
-                    ) << 3
-                ) +
-                (
-                    hash >>> j & 7
-                );
-
-            result +=
-                String.fromCharCode(
-                    x < 26
-                        ? 97 + x
-                        : x < 52
-                            ? 39 + x
-                            : x - 4
-                );
-        }
-
-        return result;
+    function now() {
+        return Date.now();
     }
 
-    function decodeSecret(
-        input,
-        password
-    ) {
+    function getTime(start) {
+        return now() - start;
+    }
+
+    function decodeSecret(arr, key) {
         var result = '';
 
-        password =
-            (password || '') + '';
-
-        if (
-            input &&
-            password
-        ) {
-            var hash =
-                salt(
-                    '123456789' +
-                    password
-                );
-
-            while (
-                hash.length <
-                input.length
-            ) {
-                hash += hash;
-            }
-
-            var i = 0;
-
-            while (
-                i < input.length
-            ) {
-                result +=
-                    String.fromCharCode(
-                        input[i] ^
-                        hash.charCodeAt(i)
-                    );
-
-                i++;
-            }
+        for (var i = 0; i < arr.length; i++) {
+            result += String.fromCharCode(
+                arr[i] ^ key.charCodeAt(i % key.length)
+            );
         }
 
         return result;
     }
 
     /*
-     * Текущий ключ из kp_source.js.
+     * Current key/decoder from kp_source.js
      */
-    var KP_KEY =
-        decodeSecret(
-            [
-                46,112,67,90,
-                13,115,6,112,
-                126,67,41,122,
-                16,66,0,37,
-                5,37,126,73,
-                127,39,17,66,
-                82,34,80,35,
-                99,22,44,117,
-                70,12,2,113
-            ],
-            atob('MUtQcGFzc3dvcmQ=')
-        );
+    var KP_API_KEY = decodeSecret([
+        46, 112, 67, 90, 13, 115, 6, 112, 126, 67, 41, 122,
+        16, 66, 0, 37, 5, 37, 126, 73, 127, 39, 17, 66,
+        82, 34, 80, 35, 99, 22, 44, 117, 70, 12, 2, 113
+    ], atob('MUtQcGFzc3dvcmQ='));
 
-    log(
-        'API CONFIG READY'
-    );
+    var KP_PROXY = 'https://cors.kp556.workers.dev/';
+    var KP_API = 'https://kinopoiskapiunofficial.tech/';
 
-    /*
-     * Универсальный GET через Lampa.Reguest.
-     */
-    function request(
-        url,
-        callback,
-        errorCallback
-    ) {
-        var network =
-            new Lampa.Reguest();
-
-        network.timeout(
-            10000
-        );
-
-        network.silent(
-            url,
-            function (json) {
-                callback(
-                    json
-                );
-            },
-            function (a, c) {
-                if (
-                    errorCallback
-                ) {
-                    errorCallback(
-                        a,
-                        c
-                    );
-                }
-            },
-            false,
-            {
-                headers: {
-                    'X-API-KEY':
-                        KP_KEY
-                }
-            }
-        );
-    }
-
-    /*
-     * IMDb -> Wikidata -> KP.
-     */
-    function getKpIdFromWikidata(
-        imdbId,
-        callback
-    ) {
-        log(
-            'WIKIDATA START:',
-            imdbId
-        );
-
-        var finished =
-            false;
-
-        function finish(
-            value
-        ) {
-            if (finished) {
-                return;
-            }
-
-            finished = true;
-
-            callback(
-                value
-            );
-        }
-
-        var query =
-            'SELECT ?item ?kp WHERE {' +
-            '?item wdt:P345 "' +
-            String(imdbId)
-                .replace(
-                    /"/g,
-                    ''
-                ) +
-            '". ' +
-            '?item wdt:P2603 ?kp. ' +
-            '} LIMIT 1';
-
-        var url =
-            'https://query.wikidata.org/sparql' +
-            '?query=' +
-            encodeURIComponent(
-                query
-            ) +
-            '&format=json';
-
-        /*
-         * Таймаут Wikidata.
-         */
-        setTimeout(
-            function () {
-                if (!finished) {
-                    log(
-                        'WIKIDATA TIMEOUT'
-                    );
-
-                    finish(
-                        null
-                    );
-                }
-            },
-            5000
-        );
-
-        fetch(
-            url,
-            {
-                method: 'GET',
-                headers: {
-                    'Accept':
-                        'application/sparql-results+json'
-                }
-            }
-        )
-            .then(
-                function (response) {
-                    log(
-                        'WIKIDATA HTTP:',
-                        response.status
-                    );
-
-                    if (
-                        !response.ok
-                    ) {
-                        throw new Error(
-                            'HTTP ' +
-                            response.status
-                        );
-                    }
-
-                    return response.json();
-                }
-            )
-            .then(
-                function (json) {
-                    var bindings =
-                        json &&
-                        json.results &&
-                        Array.isArray(
-                            json.results.bindings
-                        )
-                            ? json.results.bindings
-                            : [];
-
-                    if (
-                        !bindings.length
-                    ) {
-                        log(
-                            'WIKIDATA KP ID NOT FOUND'
-                        );
-
-                        finish(
-                            null
-                        );
-
-                        return;
-                    }
-
-                    var kp =
-                        bindings[0].kp &&
-                        bindings[0].kp.value;
-
-                    log(
-                        'WIKIDATA KP ID:',
-                        kp
-                    );
-
-                    finish(
-                        kp || null
-                    );
-                }
-            )
-            .catch(
-                function (error) {
-                    log(
-                        'WIKIDATA ERROR:',
-                        error
-                    );
-
-                    finish(
-                        null
-                    );
-                }
-            );
-    }
-
-    /*
-     * Прямой запрос similars.
-     *
-     * ВАЖНО:
-     * Больше не вызываем KP.full(),
-     * поэтому sequels_and_prequels 404
-     * больше не задерживает рекомендации.
-     */
-    function getKPSimilars(
-        kpId,
-        callback
-    ) {
-        var apiUrl =
-            'api/v2.2/films/' +
-            encodeURIComponent(
-                kpId
-            ) +
-            '/similars';
-
-        var proxyUrl =
-            KP_PROXY +
-            KP_API +
-            apiUrl;
-
-        log(
-            'SIMILARS REQUEST:',
-            apiUrl
-        );
-
-        log(
-            'SIMILARS REQUEST START'
-        );
-
-        request(
-            proxyUrl,
-            function (json) {
-                log(
-                    'SIMILARS RESPONSE:',
-                    json
-                );
-
-                var items =
-                    json &&
-                    Array.isArray(
-                        json.items
-                    )
-                        ? json.items
-                        : [];
-
-                log(
-                    'RAW SIMILARS COUNT:',
-                    items.length
-                );
-
-                callback(
-                    items
-                );
-            },
-            function (
+    function getRequest(url, success, error) {
+        if (Lampa.Reguest && typeof Lampa.Reguest.silent === 'function') {
+            Lampa.Reguest.silent(
+                url,
+                success,
                 error,
-                text
-            ) {
-                log(
-                    'SIMILARS ERROR:',
-                    error,
-                    text
-                );
-
-                callback(
-                    []
-                );
-            }
-        );
-    }
-
-    function getValue(
-        object,
-        names
-    ) {
-        if (
-            !object ||
-            typeof object !== 'object'
-        ) {
-            return null;
+                false,
+                {
+                    'X-API-KEY': KP_API_KEY,
+                    'Content-Type': 'application/json'
+                }
+            );
+            return;
         }
 
-        for (
-            var i = 0;
-            i < names.length;
-            i++
+        if (Lampa.Reguest && typeof Lampa.Reguest.get === 'function') {
+            Lampa.Reguest.get(
+                url,
+                success,
+                error,
+                {
+                    'X-API-KEY': KP_API_KEY,
+                    'Content-Type': 'application/json'
+                }
+            );
+            return;
+        }
+
+        fetch(url, {
+            headers: {
+                'X-API-KEY': KP_API_KEY,
+                'Content-Type': 'application/json'
+            }
+        })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(success)
+            .catch(error);
+    }
+
+    function getCurrentCard(event) {
+        if (!event || !event.object) return null;
+
+        if (event.object.card) {
+            return event.object.card;
+        }
+
+        if (
+            event.object.params &&
+            event.object.params.card
         ) {
-            var value;
-
-            try {
-                value =
-                    object[
-                        names[i]
-                    ];
-            } catch (e) {
-                continue;
-            }
-
-            if (
-                value !== null &&
-                value !== undefined &&
-                String(value) !== ''
-            ) {
-                return value;
-            }
+            return event.object.params.card;
         }
 
         return null;
     }
 
-    function convertItem(
-        item
-    ) {
-        var kpId =
-            getValue(
-                item,
-                [
-                    'kinopoiskId',
-                    'filmId',
-                    'kinopoisk_id'
-                ]
-            );
-
-        var type =
-            (
-                !item.type ||
-                item.type === 'FILM' ||
-                item.type === 'VIDEO'
-            )
-                ? 'movie'
-                : 'tv';
-
-        var title =
-            item.nameRu ||
-            item.nameEn ||
-            item.nameOriginal ||
-            '';
-
-        var originalTitle =
-            item.nameOriginal ||
-            item.nameEn ||
-            item.nameRu ||
-            '';
-
-        var poster =
-            item.posterUrlPreview ||
-            item.posterUrl ||
-            '';
-
-        var year =
-            item.year ||
-            '';
-
-        return {
-            source: 'KP',
-
-            type: type,
-
-            adult: false,
-
-            id:
-                'KP_' +
-                kpId,
-
-            title:
-                title,
-
-            original_title:
-                originalTitle,
-
-            overview:
-                item.description ||
-                item.shortDescription ||
-                '',
-
-            img:
-                poster,
-
-            background_image:
-                item.coverUrl ||
-                item.posterUrl ||
-                poster,
-
-            release_date:
-                String(
-                    year || ''
-                ),
-
-            year:
-                year,
-
-            vote_average:
-                +item.rating ||
-                +item.ratingKinopoisk ||
-                0,
-
-            kp_rating:
-                +item.rating ||
-                +item.ratingKinopoisk ||
-                0,
-
-            vote_count:
-                item.ratingVoteCount ||
-                item.ratingKinopoiskVoteCount ||
-                0,
-
-            kinopoisk_id:
-                kpId,
-
-            imdb_id:
-                item.imdbId ||
-                '',
-
-            imdb_rating:
-                +item.ratingImdb ||
-                0
-        };
-    }
-
-    function getTitle(
-        item
-    ) {
-        return (
-            item.title ||
-            item.name ||
-            item.nameRu ||
-            item.original_title ||
-            item.original_name ||
-            'Без названия'
-        );
-    }
-
-    function getYear(
-        item
-    ) {
-        return (
-            item.year ||
-            item.release_year ||
-            (
-                item.release_date
-                    ? String(
-                        item.release_date
-                    ).slice(
-                        0,
-                        4
-                    )
-                    : ''
-            )
-        );
-    }
-
-    function getPoster(
-        item
-    ) {
-        return (
-            item.img ||
-            item.poster ||
-            item.poster_path ||
-            item.poster_url ||
-            item.posterUrl ||
-            item.posterUrlPreview ||
-            ''
-        );
-    }
-
-    function getVote(
-        item
-    ) {
-        return (
-            item.vote_average ||
-            item.vote ||
-            item.rating ||
-            item.rating_kp ||
-            item.ratingKinopoisk ||
-            ''
-        );
-    }
-
-    function openCard(
-        item
-    ) {
-        var data =
-            convertItem(
-                item
-            );
-
-        log(
-            'OPEN KP CARD:',
-            data.kinopoisk_id,
-            data.title
-        );
-
-        if (
-            window.Router &&
-            typeof Router.call ===
-                'function'
-        ) {
-            Router.call(
-                'full',
-                data
-            );
-
-            return;
-        }
-
-        log(
-            'ROUTER.CALL UNAVAILABLE'
-        );
-    }
-
-    function createCard(
-        item
-    ) {
-        var title =
-            getTitle(
-                item
-            );
-
-        var year =
-            getYear(
-                item
-            );
-
-        var poster =
-            getPoster(
-                item
-            );
-
-        var vote =
-            getVote(
-                item
-            );
-
-        var card =
-            $(
-                '<div class="card selector layer--visible layer--render card--loaded">' +
-                    '<div class="card__view">' +
-                        '<img class="card__img">' +
-                        '<div class="card__icons">' +
-                            '<div class="card__icons-inner"></div>' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="card__title"></div>' +
-                    '<div class="card__age"></div>' +
-                '</div>'
-            );
-
-        card
-            .find(
-                '.card__title'
-            )
-            .text(
-                title
-            );
-
-        card
-            .find(
-                '.card__age'
-            )
-            .text(
-                year
-            );
-
-        if (poster) {
-            card
-                .find(
-                    '.card__img'
-                )
-                .attr(
-                    'src',
-                    poster
-                )
-                .on(
-                    'error',
-                    function () {
-                        this.src =
-                            './img/img_broken.svg';
-                    }
-                );
-        } else {
-            card
-                .find(
-                    '.card__img'
-                )
-                .attr(
-                    'src',
-                    './img/img_broken.svg'
-                );
-        }
-
-        if (
-            vote !== '' &&
-            vote !== null &&
-            vote !== undefined
-        ) {
-            card
-                .find(
-                    '.card__view'
-                )
-                .append(
-                    $(
-                        '<div class="card__vote"></div>'
-                    ).text(
-                        vote
-                    )
-                );
-        }
-
-        card.on(
-            'hover:enter',
-            function () {
-                openCard(
-                    item
-                );
-            }
-        );
-
-        card.on(
-            'click',
-            function () {
-                openCard(
-                    item
-                );
-            }
-        );
-
-        return card;
-    }
-
-    function createLine(
-        results
-    ) {
-        var line =
-            $(
-                '<div class="items-line layer--visible layer--render items-line--type-default kp-recommendations-line">' +
-                    '<div class="items-line__head">' +
-                        '<div class="items-line__title">' +
-                            'Рекомендации Кинопоиска' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="items-line__body">' +
-                        '<div class="scroll scroll--horizontal">' +
-                            '<div class="scroll__content">' +
-                                '<div class="scroll__body mapping--line">' +
-                                '</div>' +
-                            '</div>' +
-                        '</div>' +
-                    '</div>' +
-                '</div>'
-            );
-
-        var body =
-            line.find(
-                '.mapping--line'
-            );
-
-        results.forEach(
-            function (item) {
-                body.append(
-                    createCard(
-                        item
-                    )
-                );
-            }
-        );
-
-        return line;
-    }
-
-    function insertLine(
-        root,
-        line
-    ) {
-        var rows =
-            root.find(
-                '.items-line'
-            );
-
-        var similar =
-            null;
-
-        var director =
-            null;
-
-        var recommendations =
-            null;
-
-        rows.each(
-            function () {
-                var row =
-                    $(this);
-
-                var title =
-                    row
-                        .find(
-                            '.items-line__title'
-                        )
-                        .first()
-                        .text()
-                        .trim();
-
-                if (
-                    title ===
-                    'Похожие'
-                ) {
-                    similar =
-                        row;
-                }
-
-                if (
-                    title ===
-                    'Режиссёр' ||
-                    title ===
-                    'Режиссеры'
-                ) {
-                    director =
-                        row;
-                }
-
-                if (
-                    title ===
-                    'Рекомендации'
-                ) {
-                    recommendations =
-                        row;
-                }
-            }
-        );
-
-        /*
-         * Основной вариант:
-         *
-         * Похожие
-         * Рекомендации Кинопоиска
-         * Режиссёр
-         */
-        if (
-            similar &&
-            similar.length
-        ) {
-            similar.after(
-                line
-            );
-
-            log(
-                'INSERT AFTER "Похожие"'
-            );
-
-            return;
-        }
-
-        /*
-         * Если Похожие отсутствует:
-         *
-         * Рекомендации Кинопоиска
-         * Режиссёр
-         */
-        if (
-            director &&
-            director.length
-        ) {
-            director.before(
-                line
-            );
-
-            log(
-                'INSERT BEFORE "Режиссёр"'
-            );
-
-            return;
-        }
-
-        /*
-         * Последний вариант —
-         * перед обычными Рекомендациями.
-         */
-        if (
-            recommendations &&
-            recommendations.length
-        ) {
-            recommendations.before(
-                line
-            );
-
-            log(
-                'INSERT BEFORE "Рекомендации"'
-            );
-
-            return;
-        }
-
-        root.append(
-            line
-        );
-
-        log(
-            'INSERT ROOT FALLBACK'
-        );
-    }
-
-    function render(
-        activity,
-        results
-    ) {
-        if (
-            !activity ||
-            typeof activity.render !==
-                'function'
-        ) {
-            return;
-        }
-
-        var root =
-            activity.render();
-
-        if (
-            !root ||
-            typeof root.find !==
-                'function'
-        ) {
-            return;
-        }
-
-        root
-            .find(
-                '.kp-recommendations-line'
-            )
-            .remove();
-
-        var line =
-            createLine(
-                results
-            );
-
-        insertLine(
-            root,
-            line
-        );
-
-        var check =
-            root.find(
-                '.kp-recommendations-line'
-            );
-
-        log(
-            'ROW COUNT:',
-            check.length
-        );
-
-        log(
-            'CARD COUNT:',
-            check
-                .find('.card')
-                .length
-        );
-
-        log(
-            'CONNECTED:',
-            !!(
-                check.length &&
-                check[0] &&
-                document.documentElement.contains(
-                    check[0]
-                )
-            )
-        );
-
-        log(
-            'UI RESULTS RENDERED:',
-            results.length
-        );
-    }
-
-    function install() {
-        if (
-            !window.Lampa ||
-            !Lampa.Listener ||
-            typeof Lampa.Listener.follow !==
-                'function'
-        ) {
-            return false;
-        }
-
-        if (
-            install.done
-        ) {
-            return true;
-        }
-
-        install.done =
-            true;
-
-        log(
-            'PLUGIN INSTALLED'
-        );
-
-        Lampa.Listener.follow(
-            'full',
-            function (event) {
-                if (
-                    !event ||
-                    event.type !==
-                        'complite' ||
-                    !event.object ||
-                    !event.object.activity ||
-                    typeof event.object.activity.render !==
-                        'function'
-                ) {
-                    return;
-                }
-
-                var eventStart =
-                    performance.now();
-
-                var activity =
-                    event.object.activity;
-
-                var root =
-                    activity.render();
-
-                if (
-                    !root ||
-                    typeof root.find !==
-                        'function'
-                ) {
-                    return;
-                }
-
-                if (
-                    root.find(
-                        '.kp-recommendations-line'
-                    ).length
-                ) {
-                    return;
-                }
-
-                log(
-                    'FULL COMPLETE EVENT'
-                );
-
-                var ids =
-                    extractIds(
-                        event
-                    );
-
-                log(
-                    'IDS FROM LAMPA:',
-                    ids
-                );
-
-                /*
-                 * Уже есть KP ID.
-                 */
-                if (
-                    ids.kp
-                ) {
-                    log(
-                        'DIRECT KP ID:',
-                        ids.kp
-                    );
-
-                    getKPSimilars(
-                        ids.kp,
-                        function (
-                            raw
-                        ) {
-                            var results =
-                                raw.map(
-                                    convertItem
-                                );
-
-                            log(
-                                'TOTAL PIPELINE:',
-                                Math.round(
-                                    performance.now() -
-                                    eventStart
-                                ) + 'ms'
-                            );
-
-                            render(
-                                activity,
-                                results
-                            );
-                        }
-                    );
-
-                    return;
-                }
-
-                /*
-                 * IMDb -> Wikidata.
-                 */
-                if (
-                    !ids.imdb
-                ) {
-                    log(
-                        'NO IMDb ID'
-                    );
-
-                    return;
-                }
-
-                log(
-                    'IMDb FOUND:',
-                    ids.imdb
-                );
-
-                getKpIdFromWikidata(
-                    ids.imdb,
-                    function (
-                        kpId
-                    ) {
-                        if (
-                            !kpId
-                        ) {
-                            log(
-                                'NO KP ID'
-                            );
-
-                            return;
-                        }
-
-                        log(
-                            'FINAL KP ID:',
-                            kpId
-                        );
-
-                        getKPSimilars(
-                            kpId,
-                            function (
-                                raw
-                            ) {
-                                var results =
-                                    raw.map(
-                                        convertItem
-                                    );
-
-                                log(
-                                    'TOTAL PIPELINE:',
-                                    Math.round(
-                                        performance.now() -
-                                        eventStart
-                                    ) + 'ms'
-                                );
-
-                                log(
-                                    'RESULTS READY:',
-                                    results.length
-                                );
-
-                                render(
-                                    activity,
-                                    results
-                                );
-                            }
-                        );
-                    }
-                );
-            }
-        );
-
-        return true;
-    }
-
-    function extractIds(
-        event
-    ) {
-        var objects = [
-            event &&
-                event.object &&
-                event.object.card,
-
-            event &&
-                event.object &&
-                event.object.movie,
-
-            event &&
-                event.object,
-
-            event &&
-                event.link
-        ];
-
+    function getIds(card) {
         var result = {
             tmdb: null,
             kp: null,
             imdb: null
         };
 
-        for (
-            var i = 0;
-            i < objects.length;
-            i++
-        ) {
-            var object =
-                objects[i];
+        if (!card) return result;
 
-            if (
-                !object
-            ) {
-                continue;
-            }
+        result.tmdb =
+            card.tmdb_id ||
+            card.tmdb ||
+            (card.id && card.source === 'tmdb' ? card.id : null);
 
-            if (
-                !result.kp
-            ) {
-                result.kp =
-                    getValue(
-                        object,
-                        [
-                            'kinopoisk_id',
-                            'kinopoiskId',
-                            'kp_id',
-                            'kpId'
-                        ]
-                    );
-            }
+        result.kp =
+            card.kinopoisk_id ||
+            card.kp_id ||
+            card.kinopoisk ||
+            null;
 
-            if (
-                !result.tmdb
-            ) {
-                result.tmdb =
-                    getValue(
-                        object,
-                        [
-                            'tmdb_id',
-                            'tmdbId',
-                            'id_tmdb',
-                            'tmdb'
-                        ]
-                    );
-            }
-
-            if (
-                !result.imdb
-            ) {
-                result.imdb =
-                    getValue(
-                        object,
-                        [
-                            'imdb_id',
-                            'imdbId',
-                            'imdb'
-                        ]
-                    );
-            }
-        }
+        result.imdb =
+            card.imdb_id ||
+            card.imdb ||
+            null;
 
         return result;
     }
 
-    if (
-        !install()
-    ) {
-        var attempts = 0;
+    function findImdb(card) {
+        var ids = getIds(card);
 
-        var timer =
-            setInterval(
+        if (ids.imdb) {
+            log('IMDB FOUND:', ids.imdb);
+            return Promise.resolve(ids.imdb);
+        }
+
+        return Promise.resolve(null);
+    }
+
+    function getWikidataKpId(imdbId, start) {
+        if (!imdbId) {
+            log('NO IMDB ID');
+            return Promise.resolve(null);
+        }
+
+        log('WIKIDATA START');
+
+        var controller = null;
+        var timer = null;
+
+        if (typeof AbortController !== 'undefined') {
+            controller = new AbortController();
+
+            timer = setTimeout(function () {
+                try {
+                    controller.abort();
+                } catch (e) {}
+            }, 5000);
+        }
+
+        var url =
+            'https://www.wikidata.org/w/api.php' +
+            '?action=wbsearchentities' +
+            '&search=' + encodeURIComponent(imdbId) +
+            '&language=en' +
+            '&format=json' +
+            '&origin=*';
+
+        return fetch(url, controller ? {
+            signal: controller.signal
+        } : {})
+            .then(function (response) {
+                log('WIKIDATA HTTP:', response.status);
+                return response.json();
+            })
+            .then(function (data) {
+                if (timer) clearTimeout(timer);
+
+                var entity = data &&
+                    data.search &&
+                    data.search[0];
+
+                if (!entity || !entity.id) {
+                    log('WIKIDATA ENTITY NOT FOUND');
+                    return null;
+                }
+
+                return fetch(
+                    'https://www.wikidata.org/wiki/Special:EntityData/' +
+                    entity.id +
+                    '.json'
+                );
+            })
+            .then(function (response) {
+                if (!response) return null;
+                return response.json();
+            })
+            .then(function (data) {
+                if (!data) return null;
+
+                var entities = data.entities || {};
+                var entityId = Object.keys(entities)[0];
+                var entity = entities[entityId];
+
+                if (!entity || !entity.claims) {
+                    log('WIKIDATA CLAIMS NOT FOUND');
+                    return null;
+                }
+
+                /*
+                 * P2603 = Kinopoisk film ID
+                 */
+                var claims = entity.claims.P2603;
+
+                if (!claims || !claims.length) {
+                    log('WIKIDATA P2603 NOT FOUND');
+                    return null;
+                }
+
+                var value =
+                    claims[0] &&
+                    claims[0].mainsnak &&
+                    claims[0].mainsnak.datavalue &&
+                    claims[0].mainsnak.datavalue.value;
+
+                if (!value) {
+                    log('WIKIDATA KP VALUE EMPTY');
+                    return null;
+                }
+
+                log('WIKIDATA KP ID:', value);
+                return String(value);
+            })
+            .catch(function (error) {
+                if (timer) clearTimeout(timer);
+
+                log(
+                    'WIKIDATA ERROR:',
+                    error && error.message
+                        ? error.message
+                        : error
+                );
+
+                return null;
+            });
+    }
+
+    function getKpId(card, start) {
+        var ids = getIds(card);
+
+        if (ids.kp) {
+            log('KP ID FROM LAMPA:', ids.kp);
+            return Promise.resolve(String(ids.kp));
+        }
+
+        return findImdb(card)
+            .then(function (imdb) {
+                return getWikidataKpId(imdb, start);
+            });
+    }
+
+    function loadSimilars(kpId, start) {
+        var url =
+            KP_PROXY +
+            KP_API +
+            'api/v2.2/films/' +
+            encodeURIComponent(kpId) +
+            '/similars';
+
+        log('SIMILARS REQUEST:', url);
+        log('SIMILARS REQUEST START');
+
+        return new Promise(function (resolve, reject) {
+            getRequest(
+                url,
+                function (response) {
+                    log('SIMILARS RESPONSE:', response);
+
+                    var items =
+                        response &&
+                        Array.isArray(response.items)
+                            ? response.items
+                            : [];
+
+                    log('RAW SIMILARS COUNT:', items.length);
+
+                    resolve(items);
+                },
+                function (error) {
+                    log(
+                        'SIMILARS REQUEST ERROR:',
+                        error
+                    );
+
+                    reject(error);
+                }
+            );
+        });
+    }
+
+    function escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function getPoster(item) {
+        return (
+            item.posterUrlPreview ||
+            item.posterUrl ||
+            item.posterUrlOriginal ||
+            ''
+        );
+    }
+
+    function getTitle(item) {
+        return (
+            item.nameRu ||
+            item.nameEn ||
+            item.nameOriginal ||
+            'Без названия'
+        );
+    }
+
+    function getYear(item) {
+        if (item.year) return item.year;
+
+        if (item.releaseDate) {
+            return String(item.releaseDate).slice(0, 4);
+        }
+
+        return '';
+    }
+
+    function getRating(item) {
+        if (
+            item.ratingKinopoisk !== undefined &&
+            item.ratingKinopoisk !== null &&
+            item.ratingKinopoisk !== ''
+        ) {
+            return item.ratingKinopoisk;
+        }
+
+        if (
+            item.ratingImdb !== undefined &&
+            item.ratingImdb !== null
+        ) {
+            return item.ratingImdb;
+        }
+
+        return '';
+    }
+
+    function buildCard(item) {
+        var kpId =
+            item.kinopoiskId ||
+            item.filmId ||
+            item.id;
+
+        var title = getTitle(item);
+        var year = getYear(item);
+        var poster = getPoster(item);
+        var rating = getRating(item);
+
+        return {
+            id: 'KP_' + kpId,
+            source: 'KP',
+            kinopoisk_id: kpId,
+
+            title: title,
+            original_title:
+                item.nameOriginal ||
+                item.nameEn ||
+                title,
+
+            year: year,
+
+            poster: poster,
+            img: poster,
+            poster_url: poster,
+
+            vote_average: rating,
+            rating: rating,
+
+            type: 'movie',
+
+            name: title,
+            original_name:
+                item.nameOriginal ||
+                item.nameEn ||
+                title
+        };
+    }
+
+    function buildRow(items) {
+        var row = document.createElement('div');
+
+        row.className =
+            'items-line layer--visible layer--render kp-similar-line';
+
+        row.setAttribute(
+            'data-kp-version',
+            VERSION
+        );
+
+        row.innerHTML =
+            '<div class="items-line__head">' +
+                '<div class="items-line__title">' +
+                    'Рекомендации Кинопоиска' +
+                '</div>' +
+            '</div>' +
+
+            '<div class="items-line__body">' +
+                '<div class="scroll scroll--horizontal">' +
+                    '<div class="scroll__content">' +
+                        '<div class="scroll__body mapping--line">' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        var body =
+            row.querySelector('.mapping--line');
+
+        items.forEach(function (item) {
+            var data = buildCard(item);
+
+            var card =
+                document.createElement('div');
+
+            card.className =
+                'card selector layer--visible layer--render card--loaded';
+
+            card.setAttribute(
+                'data-kp-id',
+                data.kinopoisk_id
+            );
+
+            card.setAttribute(
+                'data-kp-version',
+                VERSION
+            );
+
+            card.innerHTML =
+                '<div class="card__view">' +
+
+                    (
+                        data.poster
+                            ? '<img class="card__img" src="' +
+                              escapeHtml(data.poster) +
+                              '">'
+                            : '<div class="card__img"></div>'
+                    ) +
+
+                    '<div class="card__icons">' +
+                        '<div class="card__icons-inner"></div>' +
+                    '</div>' +
+
+                    (
+                        data.rating !== ''
+                            ? '<div class="card__vote">' +
+                              escapeHtml(data.rating) +
+                              '</div>'
+                            : ''
+                    ) +
+
+                '</div>' +
+
+                '<div class="card__title">' +
+                    escapeHtml(data.title) +
+                '</div>' +
+
+                (
+                    data.year
+                        ? '<div class="card__age">' +
+                          escapeHtml(data.year) +
+                          '</div>'
+                        : ''
+                );
+
+            function openCard() {
+                log(
+                    'CARD ENTER:',
+                    data.title,
+                    'KP:',
+                    data.kinopoisk_id
+                );
+
+                if (
+                    Lampa.Router &&
+                    typeof Lampa.Router.call === 'function'
+                ) {
+                    Lampa.Router.call('full', data);
+                }
+            }
+
+            card.addEventListener(
+                'click',
+                function (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openCard();
+                },
+                true
+            );
+
+            card.addEventListener(
+                'hover:enter',
                 function () {
-                    attempts++;
+                    openCard();
+                }
+            );
 
+            card.addEventListener(
+                'keydown',
+                function (event) {
                     if (
-                        install() ||
-                        attempts >= 120
+                        event.key === 'Enter' ||
+                        event.keyCode === 13
                     ) {
-                        clearInterval(
-                            timer
-                        );
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openCard();
                     }
                 },
-                500
+                true
             );
+
+            body.appendChild(card);
+        });
+
+        return row;
+    }
+
+    function getVisibleFullRoot() {
+        var roots = document.querySelectorAll(
+            '.full-start-new, .full-start, .full'
+        );
+
+        var best = null;
+
+        for (var i = 0; i < roots.length; i++) {
+            var root = roots[i];
+
+            if (!root || !root.offsetParent) continue;
+
+            var rect = root.getBoundingClientRect();
+
+            if (
+                rect.width > 0 &&
+                rect.height > 0
+            ) {
+                best = root;
+            }
+        }
+
+        return best;
+    }
+
+    function getRows(root) {
+        if (!root) return [];
+
+        return Array.prototype.slice.call(
+            root.querySelectorAll('.items-line')
+        );
+    }
+
+    function getRowTitle(row) {
+        if (!row) return '';
+
+        var title =
+            row.querySelector(
+                '.items-line__title'
+            );
+
+        return title
+            ? title.textContent.trim()
+            : '';
+    }
+
+    function findRowByTitle(root, title) {
+        var rows = getRows(root);
+
+        for (var i = 0; i < rows.length; i++) {
+            if (
+                getRowTitle(rows[i])
+                    .toLowerCase()
+                    .indexOf(title.toLowerCase()) !== -1
+            ) {
+                return rows[i];
+            }
+        }
+
+        return null;
+    }
+
+    function insertIntoRealDom(row, start) {
+        log('REAL DOM SEARCH START');
+
+        var root = getVisibleFullRoot();
+
+        if (!root) {
+            log('VISIBLE FULL ROOT NOT FOUND');
+            return false;
+        }
+
+        log(
+            'VISIBLE FULL ROOT FOUND:',
+            root.className
+        );
+
+        var rows = getRows(root);
+
+        log(
+            'REAL DOM ROW COUNT:',
+            rows.length
+        );
+
+        var similarRow =
+            findRowByTitle(root, 'Похожие');
+
+        var recommendationsRow =
+            findRowByTitle(root, 'Рекомендации');
+
+        var actorsRow =
+            findRowByTitle(root, 'Актёры');
+
+        var directorRow =
+            findRowByTitle(root, 'Режиссёр');
+
+        var target = null;
+
+        /*
+         * Desired position:
+         *
+         * Похожие
+         * ↓
+         * Рекомендации Кинопоиска
+         *
+         * If native "Похожие" doesn't exist,
+         * place before native "Рекомендации".
+         */
+
+        if (similarRow) {
+            similarRow.insertAdjacentElement(
+                'afterend',
+                row
+            );
+
+            target = 'AFTER Похожие';
+        } else if (recommendationsRow) {
+            recommendationsRow.insertAdjacentElement(
+                'beforebegin',
+                row
+            );
+
+            target = 'BEFORE Рекомендации';
+        } else if (directorRow) {
+            directorRow.insertAdjacentElement(
+                'beforebegin',
+                row
+            );
+
+            target = 'BEFORE Режиссёр';
+        } else if (actorsRow) {
+            actorsRow.insertAdjacentElement(
+                'beforebegin',
+                row
+            );
+
+            target = 'BEFORE Актёры';
+        } else {
+            var container =
+                root.querySelector(
+                    '.full-start__body, .full-start-new__body'
+                );
+
+            if (!container) {
+                container = root;
+            }
+
+            container.appendChild(row);
+
+            target = 'ROOT FALLBACK';
+        }
+
+        log(
+            'ROW INSERTED:',
+            target
+        );
+
+        log(
+            'ROW CONNECTED:',
+            row.isConnected
+        );
+
+        log(
+            'ROW RECT:',
+            row.getBoundingClientRect().width,
+            row.getBoundingClientRect().height
+        );
+
+        log(
+            'CARD COUNT:',
+            row.querySelectorAll('.card').length
+        );
+
+        return row.isConnected;
+    }
+
+    function removeOldRow() {
+        var old =
+            document.querySelectorAll(
+                '.kp-similar-line[data-kp-version]'
+            );
+
+        for (var i = 0; i < old.length; i++) {
+            old[i].remove();
+        }
+    }
+
+    function waitForRealDom(items, start, attempt) {
+        attempt = attempt || 0;
+
+        var row =
+            buildRow(items);
+
+        removeOldRow();
+
+        if (insertIntoRealDom(row, start)) {
+            log(
+                'UI RENDERED IN REAL DOM',
+                'TOTAL:',
+                getTime(start) + 'ms'
+            );
+
+            return;
+        }
+
+        if (attempt >= 20) {
+            log(
+                'REAL DOM INSERT FAILED AFTER',
+                attempt,
+                'ATTEMPTS'
+            );
+            return;
+        }
+
+        log(
+            'REAL DOM NOT READY, RETRY:',
+            attempt + 1
+        );
+
+        setTimeout(function () {
+            waitForRealDom(
+                items,
+                start,
+                attempt + 1
+            );
+        }, 250);
+    }
+
+    function process(event) {
+        if (working) {
+            log('ALREADY WORKING');
+            return;
+        }
+
+        var start = now();
+
+        log('--------------------------------');
+        log('FULL COMPLETE EVENT');
+        log('CURRENT CARD:', getCurrentCard(event));
+
+        var card = getCurrentCard(event);
+
+        if (!card) {
+            log('NO CURRENT CARD');
+            return;
+        }
+
+        var key =
+            (card.id || '') +
+            '|' +
+            (card.title || '') +
+            '|' +
+            (card.year || '');
+
+        if (currentKey === key) {
+            log('SAME CARD, SKIP:', key);
+            return;
+        }
+
+        currentKey = key;
+        working = true;
+
+        var ids = getIds(card);
+
+        log('IDS FROM LAMPA:', ids);
+
+        getKpId(card, start)
+            .then(function (kpId) {
+                if (!kpId) {
+                    throw new Error(
+                        'Kinopoisk ID not found'
+                    );
+                }
+
+                log(
+                    'FINAL KP ID:',
+                    kpId
+                );
+
+                return loadSimilars(
+                    kpId,
+                    start
+                );
+            })
+            .then(function (items) {
+                log(
+                    'SIMILAR COUNT:',
+                    items.length
+                );
+
+                log(
+                    'TOTAL PIPELINE:',
+                    getTime(start) + 'ms'
+                );
+
+                if (!items.length) {
+                    log(
+                        'NO SIMILARS'
+                    );
+                    return;
+                }
+
+                log(
+                    'RESULTS READY:',
+                    items.length
+                );
+
+                /*
+                 * Important:
+                 * wait for the ACTUAL visible Lampa DOM.
+                 */
+                waitForRealDom(
+                    items,
+                    start,
+                    0
+                );
+            })
+            .catch(function (error) {
+                log(
+                    'PIPELINE ERROR:',
+                    error &&
+                    error.message
+                        ? error.message
+                        : error
+                );
+            })
+            .finally(function () {
+                working = false;
+            });
+    }
+
+    if (
+        Lampa.Listener &&
+        typeof Lampa.Listener.follow === 'function'
+    ) {
+        Lampa.Listener.follow(
+            'full',
+            function (event) {
+                if (
+                    !event ||
+                    event.type !== 'complite'
+                ) {
+                    return;
+                }
+
+                setTimeout(function () {
+                    process(event);
+                }, 50);
+            }
+        );
+
+        log('LISTENER INSTALLED');
+    } else {
+        log('Lampa.Listener unavailable');
     }
 
 }());
