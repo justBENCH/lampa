@@ -1,15 +1,15 @@
-/* Kinopoisk Similar for Lampa v1.4.0
- * BUILD: 2026-09-20-18-20
+/* Kinopoisk Similar for Lampa v1.4.1
+ * BUILD: 2026-09-20-18-30
  *
- * TMDB detail -> IMDb -> Wikidata -> KP ID -> KP /similars
- * Inserts the real DOM row directly into the visible Lampa page.
+ * TMDB detail -> IMDb -> Wikidata SPARQL -> KP ID -> KP /similars
+ * Waits for the real visible Lampa rows before inserting.
  */
 
 (function () {
     'use strict';
 
-    var VERSION = '1.4.0';
-    var BUILD = '2026-09-20-18-20';
+    var VERSION = '1.4.1';
+    var BUILD = '2026-09-20-18-30';
     var PREFIX = '[KP UI v' + VERSION + ']';
 
     console.log(PREFIX + ' VERSION:', VERSION);
@@ -35,7 +35,7 @@
         return Date.now();
     }
 
-    function getTime(start) {
+    function elapsed(start) {
         return now() - start;
     }
 
@@ -51,9 +51,6 @@
         return result;
     }
 
-    /*
-     * Current key/decoder from kp_source.js
-     */
     var KP_API_KEY = decodeSecret([
         46, 112, 67, 90, 13, 115, 6, 112, 126, 67, 41, 122,
         16, 66, 0, 37, 5, 37, 126, 73, 127, 39, 17, 66,
@@ -64,25 +61,15 @@
     var KP_API = 'https://kinopoiskapiunofficial.tech/';
 
     function getRequest(url, success, error) {
-        if (Lampa.Reguest && typeof Lampa.Reguest.silent === 'function') {
+        if (
+            Lampa.Reguest &&
+            typeof Lampa.Reguest.silent === 'function'
+        ) {
             Lampa.Reguest.silent(
                 url,
                 success,
                 error,
                 false,
-                {
-                    'X-API-KEY': KP_API_KEY,
-                    'Content-Type': 'application/json'
-                }
-            );
-            return;
-        }
-
-        if (Lampa.Reguest && typeof Lampa.Reguest.get === 'function') {
-            Lampa.Reguest.get(
-                url,
-                success,
-                error,
                 {
                     'X-API-KEY': KP_API_KEY,
                     'Content-Type': 'application/json'
@@ -97,15 +84,20 @@
                 'Content-Type': 'application/json'
             }
         })
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error(
+                        'HTTP ' + response.status
+                    );
+                }
+
+                return response.json();
             })
             .then(success)
             .catch(error);
     }
 
-    function getCurrentCard(event) {
+    function getCard(event) {
         if (!event || !event.object) return null;
 
         if (event.object.card) {
@@ -123,144 +115,127 @@
     }
 
     function getIds(card) {
-        var result = {
-            tmdb: null,
-            kp: null,
-            imdb: null
+        return {
+            tmdb:
+                card &&
+                (
+                    card.tmdb_id ||
+                    card.tmdb ||
+                    (
+                        card.source === 'tmdb'
+                            ? card.id
+                            : null
+                    )
+                ),
+
+            kp:
+                card &&
+                (
+                    card.kinopoisk_id ||
+                    card.kp_id ||
+                    card.kinopoisk ||
+                    null
+                ),
+
+            imdb:
+                card &&
+                (
+                    card.imdb_id ||
+                    card.imdb ||
+                    null
+                )
         };
-
-        if (!card) return result;
-
-        result.tmdb =
-            card.tmdb_id ||
-            card.tmdb ||
-            (card.id && card.source === 'tmdb' ? card.id : null);
-
-        result.kp =
-            card.kinopoisk_id ||
-            card.kp_id ||
-            card.kinopoisk ||
-            null;
-
-        result.imdb =
-            card.imdb_id ||
-            card.imdb ||
-            null;
-
-        return result;
     }
 
-    function findImdb(card) {
-        var ids = getIds(card);
-
-        if (ids.imdb) {
-            log('IMDB FOUND:', ids.imdb);
-            return Promise.resolve(ids.imdb);
-        }
-
-        return Promise.resolve(null);
-    }
-
+    /*
+     * IMPORTANT:
+     * This is the Wikidata route that previously returned
+     * KP ID 6385370 for tt33764258.
+     */
     function getWikidataKpId(imdbId, start) {
         if (!imdbId) {
             log('NO IMDB ID');
             return Promise.resolve(null);
         }
 
-        log('WIKIDATA START');
+        log('WIKIDATA SPARQL START:', imdbId);
 
-        var controller = null;
-        var timer = null;
-
-        if (typeof AbortController !== 'undefined') {
-            controller = new AbortController();
-
-            timer = setTimeout(function () {
-                try {
-                    controller.abort();
-                } catch (e) {}
-            }, 5000);
-        }
+        var query =
+            'SELECT ?item ?kp WHERE {' +
+            '?item wdt:P345 "' +
+            imdbId +
+            '". ' +
+            '?item wdt:P2603 ?kp.' +
+            '} LIMIT 1';
 
         var url =
-            'https://www.wikidata.org/w/api.php' +
-            '?action=wbsearchentities' +
-            '&search=' + encodeURIComponent(imdbId) +
-            '&language=en' +
-            '&format=json' +
-            '&origin=*';
+            'https://query.wikidata.org/sparql' +
+            '?query=' +
+            encodeURIComponent(query) +
+            '&format=json';
 
-        return fetch(url, controller ? {
-            signal: controller.signal
-        } : {})
+        return fetch(url, {
+            headers: {
+                'Accept': 'application/sparql-results+json'
+            }
+        })
             .then(function (response) {
-                log('WIKIDATA HTTP:', response.status);
-                return response.json();
-            })
-            .then(function (data) {
-                if (timer) clearTimeout(timer);
-
-                var entity = data &&
-                    data.search &&
-                    data.search[0];
-
-                if (!entity || !entity.id) {
-                    log('WIKIDATA ENTITY NOT FOUND');
-                    return null;
-                }
-
-                return fetch(
-                    'https://www.wikidata.org/wiki/Special:EntityData/' +
-                    entity.id +
-                    '.json'
+                log(
+                    'WIKIDATA SPARQL HTTP:',
+                    response.status
                 );
-            })
-            .then(function (response) {
-                if (!response) return null;
+
+                if (!response.ok) {
+                    throw new Error(
+                        'Wikidata HTTP ' +
+                        response.status
+                    );
+                }
+
                 return response.json();
             })
             .then(function (data) {
-                if (!data) return null;
+                var bindings =
+                    data &&
+                    data.results &&
+                    data.results.bindings;
 
-                var entities = data.entities || {};
-                var entityId = Object.keys(entities)[0];
-                var entity = entities[entityId];
+                if (
+                    !bindings ||
+                    !bindings.length
+                ) {
+                    log(
+                        'WIKIDATA KP ID NOT FOUND'
+                    );
 
-                if (!entity || !entity.claims) {
-                    log('WIKIDATA CLAIMS NOT FOUND');
                     return null;
                 }
 
-                /*
-                 * P2603 = Kinopoisk film ID
-                 */
-                var claims = entity.claims.P2603;
+                var kp =
+                    bindings[0] &&
+                    bindings[0].kp &&
+                    bindings[0].kp.value;
 
-                if (!claims || !claims.length) {
-                    log('WIKIDATA P2603 NOT FOUND');
+                if (!kp) {
+                    log(
+                        'WIKIDATA KP VALUE EMPTY'
+                    );
+
                     return null;
                 }
-
-                var value =
-                    claims[0] &&
-                    claims[0].mainsnak &&
-                    claims[0].mainsnak.datavalue &&
-                    claims[0].mainsnak.datavalue.value;
-
-                if (!value) {
-                    log('WIKIDATA KP VALUE EMPTY');
-                    return null;
-                }
-
-                log('WIKIDATA KP ID:', value);
-                return String(value);
-            })
-            .catch(function (error) {
-                if (timer) clearTimeout(timer);
 
                 log(
+                    'WIKIDATA KP ID:',
+                    kp
+                );
+
+                return String(kp);
+            })
+            .catch(function (error) {
+                log(
                     'WIKIDATA ERROR:',
-                    error && error.message
+                    error &&
+                    error.message
                         ? error.message
                         : error
                 );
@@ -272,15 +247,33 @@
     function getKpId(card, start) {
         var ids = getIds(card);
 
+        log('IDS FROM LAMPA:', ids);
+
         if (ids.kp) {
-            log('KP ID FROM LAMPA:', ids.kp);
-            return Promise.resolve(String(ids.kp));
+            log(
+                'KP ID FROM LAMPA:',
+                ids.kp
+            );
+
+            return Promise.resolve(
+                String(ids.kp)
+            );
         }
 
-        return findImdb(card)
-            .then(function (imdb) {
-                return getWikidataKpId(imdb, start);
-            });
+        if (!ids.imdb) {
+            log('NO IMDB ID');
+            return Promise.resolve(null);
+        }
+
+        log(
+            'IMDB FOUND:',
+            ids.imdb
+        );
+
+        return getWikidataKpId(
+            ids.imdb,
+            start
+        );
     }
 
     function loadSimilars(kpId, start) {
@@ -298,15 +291,23 @@
             getRequest(
                 url,
                 function (response) {
-                    log('SIMILARS RESPONSE:', response);
+                    log(
+                        'SIMILARS RESPONSE:',
+                        response
+                    );
 
                     var items =
                         response &&
-                        Array.isArray(response.items)
+                        Array.isArray(
+                            response.items
+                        )
                             ? response.items
                             : [];
 
-                    log('RAW SIMILARS COUNT:', items.length);
+                    log(
+                        'RAW SIMILARS COUNT:',
+                        items.length
+                    );
 
                     resolve(items);
                 },
@@ -323,71 +324,66 @@
     }
 
     function escapeHtml(value) {
-        return String(value == null ? '' : value)
+        return String(
+            value == null ? '' : value
+        )
             .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
+            .replace(
+                /</g,
+                '&lt;'
+            )
+            .replace(
+                />/g,
+                '&gt;'
+            )
+            .replace(
+                /"/g,
+                '&quot;'
+            )
+            .replace(
+                /'/g,
+                '&#039;'
+            );
     }
 
-    function getPoster(item) {
-        return (
-            item.posterUrlPreview ||
-            item.posterUrl ||
-            item.posterUrlOriginal ||
-            ''
-        );
-    }
-
-    function getTitle(item) {
-        return (
-            item.nameRu ||
-            item.nameEn ||
-            item.nameOriginal ||
-            'Без названия'
-        );
-    }
-
-    function getYear(item) {
-        if (item.year) return item.year;
-
-        if (item.releaseDate) {
-            return String(item.releaseDate).slice(0, 4);
-        }
-
-        return '';
-    }
-
-    function getRating(item) {
-        if (
-            item.ratingKinopoisk !== undefined &&
-            item.ratingKinopoisk !== null &&
-            item.ratingKinopoisk !== ''
-        ) {
-            return item.ratingKinopoisk;
-        }
-
-        if (
-            item.ratingImdb !== undefined &&
-            item.ratingImdb !== null
-        ) {
-            return item.ratingImdb;
-        }
-
-        return '';
-    }
-
-    function buildCard(item) {
+    function buildData(item) {
         var kpId =
             item.kinopoiskId ||
             item.filmId ||
             item.id;
 
-        var title = getTitle(item);
-        var year = getYear(item);
-        var poster = getPoster(item);
-        var rating = getRating(item);
+        var title =
+            item.nameRu ||
+            item.nameEn ||
+            item.nameOriginal ||
+            'Без названия';
+
+        var year =
+            item.year ||
+            (
+                item.releaseDate
+                    ? String(
+                        item.releaseDate
+                    ).slice(0, 4)
+                    : ''
+            );
+
+        var poster =
+            item.posterUrlPreview ||
+            item.posterUrl ||
+            item.posterUrlOriginal ||
+            '';
+
+        var rating =
+            item.ratingKinopoisk !== undefined &&
+            item.ratingKinopoisk !== null
+                ? item.ratingKinopoisk
+                : (
+                    item.ratingImdb !== undefined &&
+                    item.ratingImdb !== null
+                        ? item.ratingImdb
+                        : ''
+                );
 
         return {
             id: 'KP_' + kpId,
@@ -404,23 +400,17 @@
 
             poster: poster,
             img: poster,
-            poster_url: poster,
 
             vote_average: rating,
             rating: rating,
 
-            type: 'movie',
-
-            name: title,
-            original_name:
-                item.nameOriginal ||
-                item.nameEn ||
-                title
+            type: 'movie'
         };
     }
 
     function buildRow(items) {
-        var row = document.createElement('div');
+        var row =
+            document.createElement('div');
 
         row.className =
             'items-line layer--visible layer--render kp-similar-line';
@@ -447,10 +437,13 @@
             '</div>';
 
         var body =
-            row.querySelector('.mapping--line');
+            row.querySelector(
+                '.mapping--line'
+            );
 
         items.forEach(function (item) {
-            var data = buildCard(item);
+            var data =
+                buildData(item);
 
             var card =
                 document.createElement('div');
@@ -463,20 +456,17 @@
                 data.kinopoisk_id
             );
 
-            card.setAttribute(
-                'data-kp-version',
-                VERSION
-            );
-
             card.innerHTML =
                 '<div class="card__view">' +
 
                     (
                         data.poster
                             ? '<img class="card__img" src="' +
-                              escapeHtml(data.poster) +
+                              escapeHtml(
+                                  data.poster
+                              ) +
                               '">'
-                            : '<div class="card__img"></div>'
+                            : ''
                     ) +
 
                     '<div class="card__icons">' +
@@ -486,7 +476,9 @@
                     (
                         data.rating !== ''
                             ? '<div class="card__vote">' +
-                              escapeHtml(data.rating) +
+                              escapeHtml(
+                                  data.rating
+                              ) +
                               '</div>'
                             : ''
                     ) +
@@ -494,30 +486,37 @@
                 '</div>' +
 
                 '<div class="card__title">' +
-                    escapeHtml(data.title) +
+                    escapeHtml(
+                        data.title
+                    ) +
                 '</div>' +
 
                 (
                     data.year
                         ? '<div class="card__age">' +
-                          escapeHtml(data.year) +
+                          escapeHtml(
+                              data.year
+                          ) +
                           '</div>'
                         : ''
                 );
 
             function openCard() {
                 log(
-                    'CARD ENTER:',
+                    'CARD OPEN:',
                     data.title,
-                    'KP:',
                     data.kinopoisk_id
                 );
 
                 if (
                     Lampa.Router &&
-                    typeof Lampa.Router.call === 'function'
+                    typeof Lampa.Router.call ===
+                        'function'
                 ) {
-                    Lampa.Router.call('full', data);
+                    Lampa.Router.call(
+                        'full',
+                        data
+                    );
                 }
             }
 
@@ -526,16 +525,10 @@
                 function (event) {
                     event.preventDefault();
                     event.stopPropagation();
+
                     openCard();
                 },
                 true
-            );
-
-            card.addEventListener(
-                'hover:enter',
-                function () {
-                    openCard();
-                }
             );
 
             card.addEventListener(
@@ -547,6 +540,7 @@
                     ) {
                         event.preventDefault();
                         event.stopPropagation();
+
                         openCard();
                     }
                 },
@@ -559,42 +553,55 @@
         return row;
     }
 
-    function getVisibleFullRoot() {
-        var roots = document.querySelectorAll(
-            '.full-start-new, .full-start, .full'
-        );
+    function removeOldRows() {
+        var rows =
+            document.querySelectorAll(
+                '.kp-similar-line'
+            );
 
-        var best = null;
+        for (
+            var i = 0;
+            i < rows.length;
+            i++
+        ) {
+            rows[i].remove();
+        }
+    }
 
-        for (var i = 0; i < roots.length; i++) {
-            var root = roots[i];
+    function getVisibleRows() {
+        var rows =
+            document.querySelectorAll(
+                '.items-line'
+            );
 
-            if (!root || !root.offsetParent) continue;
+        var result = [];
 
-            var rect = root.getBoundingClientRect();
+        for (
+            var i = 0;
+            i < rows.length;
+            i++
+        ) {
+            var row = rows[i];
+
+            if (!row.offsetParent) {
+                continue;
+            }
+
+            var rect =
+                row.getBoundingClientRect();
 
             if (
                 rect.width > 0 &&
                 rect.height > 0
             ) {
-                best = root;
+                result.push(row);
             }
         }
 
-        return best;
-    }
-
-    function getRows(root) {
-        if (!root) return [];
-
-        return Array.prototype.slice.call(
-            root.querySelectorAll('.items-line')
-        );
+        return result;
     }
 
     function getRowTitle(row) {
-        if (!row) return '';
-
         var title =
             row.querySelector(
                 '.items-line__title'
@@ -605,120 +612,176 @@
             : '';
     }
 
-    function findRowByTitle(root, title) {
-        var rows = getRows(root);
+    function findRows() {
+        var rows =
+            getVisibleRows();
 
-        for (var i = 0; i < rows.length; i++) {
+        var result = {
+            similar: null,
+            recommendations: null,
+            actors: null,
+            director: null
+        };
+
+        for (
+            var i = 0;
+            i < rows.length;
+            i++
+        ) {
+            var title =
+                getRowTitle(
+                    rows[i]
+                ).toLowerCase();
+
             if (
-                getRowTitle(rows[i])
-                    .toLowerCase()
-                    .indexOf(title.toLowerCase()) !== -1
+                title.indexOf(
+                    'похожие'
+                ) !== -1
             ) {
-                return rows[i];
+                result.similar = rows[i];
+            }
+
+            if (
+                title ===
+                'рекомендации'
+            ) {
+                result.recommendations =
+                    rows[i];
+            }
+
+            if (
+                title.indexOf(
+                    'актёр'
+                ) !== -1 ||
+                title.indexOf(
+                    'актер'
+                ) !== -1
+            ) {
+                result.actors =
+                    rows[i];
+            }
+
+            if (
+                title.indexOf(
+                    'режиссёр'
+                ) !== -1 ||
+                title.indexOf(
+                    'режиссер'
+                ) !== -1
+            ) {
+                result.director =
+                    rows[i];
             }
         }
 
-        return null;
+        return result;
     }
 
-    function insertIntoRealDom(row, start) {
-        log('REAL DOM SEARCH START');
+    /*
+     * IMPORTANT:
+     * Lampa builds these rows asynchronously.
+     * We wait until the actual visible rows exist.
+     */
+    function waitForRows(
+        row,
+        start,
+        attempt
+    ) {
+        attempt =
+            attempt || 0;
 
-        var root = getVisibleFullRoot();
-
-        if (!root) {
-            log('VISIBLE FULL ROOT NOT FOUND');
-            return false;
-        }
+        var found =
+            findRows();
 
         log(
-            'VISIBLE FULL ROOT FOUND:',
-            root.className
+            'DOM CHECK #' +
+            attempt +
+            ':',
+            'similar=' +
+            !!found.similar,
+            'recommendations=' +
+            !!found.recommendations,
+            'actors=' +
+            !!found.actors,
+            'director=' +
+            !!found.director
         );
 
-        var rows = getRows(root);
-
-        log(
-            'REAL DOM ROW COUNT:',
-            rows.length
-        );
-
-        var similarRow =
-            findRowByTitle(root, 'Похожие');
-
-        var recommendationsRow =
-            findRowByTitle(root, 'Рекомендации');
-
-        var actorsRow =
-            findRowByTitle(root, 'Актёры');
-
-        var directorRow =
-            findRowByTitle(root, 'Режиссёр');
-
-        var target = null;
-
-        /*
-         * Desired position:
-         *
-         * Похожие
-         * ↓
-         * Рекомендации Кинопоиска
-         *
-         * If native "Похожие" doesn't exist,
-         * place before native "Рекомендации".
-         */
-
-        if (similarRow) {
-            similarRow.insertAdjacentElement(
+        if (found.similar) {
+            found.similar.insertAdjacentElement(
                 'afterend',
                 row
             );
 
-            target = 'AFTER Похожие';
-        } else if (recommendationsRow) {
-            recommendationsRow.insertAdjacentElement(
+            log(
+                'ROW INSERTED AFTER Похожие'
+            );
+        } else if (
+            found.recommendations
+        ) {
+            found.recommendations.insertAdjacentElement(
                 'beforebegin',
                 row
             );
 
-            target = 'BEFORE Рекомендации';
-        } else if (directorRow) {
-            directorRow.insertAdjacentElement(
+            log(
+                'ROW INSERTED BEFORE Рекомендации'
+            );
+        } else if (
+            found.director
+        ) {
+            found.director.insertAdjacentElement(
                 'beforebegin',
                 row
             );
 
-            target = 'BEFORE Режиссёр';
-        } else if (actorsRow) {
-            actorsRow.insertAdjacentElement(
+            log(
+                'ROW INSERTED BEFORE Режиссёр'
+            );
+        } else if (
+            found.actors
+        ) {
+            found.actors.insertAdjacentElement(
                 'beforebegin',
                 row
             );
 
-            target = 'BEFORE Актёры';
+            log(
+                'ROW INSERTED BEFORE Актёры'
+            );
+        } else if (
+            attempt < 40
+        ) {
+            setTimeout(
+                function () {
+                    waitForRows(
+                        row,
+                        start,
+                        attempt + 1
+                    );
+                },
+                250
+            );
+
+            return;
         } else {
-            var container =
-                root.querySelector(
-                    '.full-start__body, .full-start-new__body'
-                );
+            log(
+                'DOM ROWS TIMEOUT'
+            );
 
-            if (!container) {
-                container = root;
-            }
-
-            container.appendChild(row);
-
-            target = 'ROOT FALLBACK';
+            return;
         }
-
-        log(
-            'ROW INSERTED:',
-            target
-        );
 
         log(
             'ROW CONNECTED:',
             row.isConnected
+        );
+
+        log(
+            'CARD COUNT:',
+            row.querySelectorAll(
+                '.card'
+            ).length
         );
 
         log(
@@ -728,81 +791,37 @@
         );
 
         log(
-            'CARD COUNT:',
-            row.querySelectorAll('.card').length
+            'TOTAL:',
+            elapsed(start) + 'ms'
         );
-
-        return row.isConnected;
-    }
-
-    function removeOldRow() {
-        var old =
-            document.querySelectorAll(
-                '.kp-similar-line[data-kp-version]'
-            );
-
-        for (var i = 0; i < old.length; i++) {
-            old[i].remove();
-        }
-    }
-
-    function waitForRealDom(items, start, attempt) {
-        attempt = attempt || 0;
-
-        var row =
-            buildRow(items);
-
-        removeOldRow();
-
-        if (insertIntoRealDom(row, start)) {
-            log(
-                'UI RENDERED IN REAL DOM',
-                'TOTAL:',
-                getTime(start) + 'ms'
-            );
-
-            return;
-        }
-
-        if (attempt >= 20) {
-            log(
-                'REAL DOM INSERT FAILED AFTER',
-                attempt,
-                'ATTEMPTS'
-            );
-            return;
-        }
-
-        log(
-            'REAL DOM NOT READY, RETRY:',
-            attempt + 1
-        );
-
-        setTimeout(function () {
-            waitForRealDom(
-                items,
-                start,
-                attempt + 1
-            );
-        }, 250);
     }
 
     function process(event) {
+        var start = now();
+
         if (working) {
-            log('ALREADY WORKING');
+            log(
+                'ALREADY WORKING'
+            );
             return;
         }
 
-        var start = now();
+        var card =
+            getCard(event);
 
-        log('--------------------------------');
-        log('FULL COMPLETE EVENT');
-        log('CURRENT CARD:', getCurrentCard(event));
+        log(
+            'FULL COMPLETE EVENT'
+        );
 
-        var card = getCurrentCard(event);
+        log(
+            'CURRENT CARD:',
+            card
+        );
 
         if (!card) {
-            log('NO CURRENT CARD');
+            log(
+                'NO CURRENT CARD'
+            );
             return;
         }
 
@@ -813,19 +832,24 @@
             '|' +
             (card.year || '');
 
-        if (currentKey === key) {
-            log('SAME CARD, SKIP:', key);
+        if (
+            currentKey === key
+        ) {
+            log(
+                'SAME CARD, SKIP'
+            );
             return;
         }
 
         currentKey = key;
         working = true;
 
-        var ids = getIds(card);
+        removeOldRows();
 
-        log('IDS FROM LAMPA:', ids);
-
-        getKpId(card, start)
+        getKpId(
+            card,
+            start
+        )
             .then(function (kpId) {
                 if (!kpId) {
                     throw new Error(
@@ -849,11 +873,6 @@
                     items.length
                 );
 
-                log(
-                    'TOTAL PIPELINE:',
-                    getTime(start) + 'ms'
-                );
-
                 if (!items.length) {
                     log(
                         'NO SIMILARS'
@@ -866,12 +885,19 @@
                     items.length
                 );
 
+                var row =
+                    buildRow(items);
+
                 /*
-                 * Important:
-                 * wait for the ACTUAL visible Lampa DOM.
+                 * Start waiting for the REAL
+                 * native Lampa rows.
                  */
-                waitForRealDom(
-                    items,
+                log(
+                    'WAITING FOR REAL LAMPA ROWS'
+                );
+
+                waitForRows(
+                    row,
                     start,
                     0
                 );
@@ -892,7 +918,8 @@
 
     if (
         Lampa.Listener &&
-        typeof Lampa.Listener.follow === 'function'
+        typeof Lampa.Listener.follow ===
+            'function'
     ) {
         Lampa.Listener.follow(
             'full',
@@ -904,15 +931,22 @@
                     return;
                 }
 
-                setTimeout(function () {
-                    process(event);
-                }, 50);
+                setTimeout(
+                    function () {
+                        process(event);
+                    },
+                    50
+                );
             }
         );
 
-        log('LISTENER INSTALLED');
+        log(
+            'LISTENER INSTALLED'
+        );
     } else {
-        log('Lampa.Listener unavailable');
+        log(
+            'Lampa.Listener unavailable'
+        );
     }
 
 }());
