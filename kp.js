@@ -1,13 +1,13 @@
-/* KP Recommendations for Lampa v1.5.7
+/* KP Recommendations for Lampa v1.5.8
  * 2026-09-20
  *
- * Native Lampa Card implementation
+ * REAL NATIVE LAMPA CARD
  */
 (function () {
     'use strict';
 
-    var VERSION = '1.5.7';
-    var BUILD = '2026-09-20-19-30';
+    var VERSION = '1.5.8';
+    var BUILD = '2026-09-20-19-35';
 
     console.log('[KP UI v' + VERSION + '] VERSION:', VERSION);
     console.log('[KP UI v' + VERSION + '] BUILD:', BUILD);
@@ -20,24 +20,46 @@
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
-        args.unshift('[KP UI v' + VERSION + ']');
-        console.log.apply(console, args);
+
+        args.unshift(
+            '[KP UI v' + VERSION + ']'
+        );
+
+        console.log.apply(
+            console,
+            args
+        );
     }
 
     function error() {
         var args = Array.prototype.slice.call(arguments);
-        args.unshift('[KP UI v' + VERSION + ']');
-        console.error.apply(console, args);
+
+        args.unshift(
+            '[KP UI v' + VERSION + ']'
+        );
+
+        console.error.apply(
+            console,
+            args
+        );
     }
 
     function getCurrentCard(event) {
-        if (!event || !event.object) return null;
+        if (
+            !event ||
+            !event.object
+        ) {
+            return null;
+        }
 
         if (event.object.card) {
             return event.object.card;
         }
 
-        if (event.object.params && event.object.params.card) {
+        if (
+            event.object.params &&
+            event.object.params.card
+        ) {
             return event.object.params.card;
         }
 
@@ -45,7 +67,9 @@
     }
 
     function getImdbId(card) {
-        if (!card) return '';
+        if (!card) {
+            return '';
+        }
 
         return (
             card.imdb_id ||
@@ -56,21 +80,38 @@
     }
 
     function findNativeRecommendations(root) {
-        if (!root || !root.find) return null;
+        if (
+            !root ||
+            !root.find
+        ) {
+            return null;
+        }
 
-        var lines = root.find('.items-line').toArray();
+        var lines =
+            root
+                .find('.items-line')
+                .toArray();
 
-        for (var i = 0; i < lines.length; i++) {
-            var title = $(lines[i])
-                .find('.items-line__title')
-                .first()
-                .text()
-                .trim()
-                .toLowerCase();
+        for (
+            var i = 0;
+            i < lines.length;
+            i++
+        ) {
+            var title =
+                $(lines[i])
+                    .find(
+                        '.items-line__title'
+                    )
+                    .first()
+                    .text()
+                    .trim()
+                    .toLowerCase();
 
             if (
                 title === 'рекомендации' ||
-                title.indexOf('рекомендации') !== -1
+                title.indexOf(
+                    'рекомендации'
+                ) !== -1
             ) {
                 return lines[i];
             }
@@ -79,7 +120,10 @@
         return null;
     }
 
-    function waitForNativeRecommendations(event, callback) {
+    function waitForNativeRecommendations(
+        event,
+        callback
+    ) {
         var activity =
             event &&
             event.object &&
@@ -87,21 +131,31 @@
 
         if (
             !activity ||
-            typeof activity.render !== 'function'
+            typeof activity.render !==
+                'function'
         ) {
-            error('ACTIVITY RENDER NOT FOUND');
+            error(
+                'ACTIVITY RENDER NOT FOUND'
+            );
+
             return;
         }
 
-        var started = Date.now();
+        var started =
+            Date.now();
+
         var finished = false;
         var observer = null;
         var timer = null;
 
-        log('WAIT NATIVE RECOMMENDATIONS START');
+        log(
+            'WAIT NATIVE RECOMMENDATIONS START'
+        );
 
         function stop() {
-            if (finished) return;
+            if (finished) {
+                return;
+            }
 
             finished = true;
 
@@ -112,25 +166,37 @@
             }
 
             if (timer) {
-                clearInterval(timer);
+                clearInterval(
+                    timer
+                );
             }
         }
 
         function check(source) {
-            if (finished) return;
+            if (finished) {
+                return;
+            }
 
             var root;
 
             try {
-                root = activity.render();
+                root =
+                    activity.render();
             } catch (e) {
                 return;
             }
 
-            if (!root || !root.find) return;
+            if (
+                !root ||
+                !root.find
+            ) {
+                return;
+            }
 
             var native =
-                findNativeRecommendations(root);
+                findNativeRecommendations(
+                    root
+                );
 
             if (native) {
                 stop();
@@ -139,24 +205,38 @@
                     'NATIVE RECOMMENDATIONS FOUND:',
                     source,
                     'after',
-                    Date.now() - started + 'ms'
+                    Date.now() -
+                        started +
+                        'ms'
                 );
 
                 log(
                     'NATIVE RECOMMENDATIONS CONNECTED:',
-                    !!$(native).closest('body').length
+                    !!$(
+                        native
+                    ).closest(
+                        'body'
+                    ).length
                 );
 
-                callback(root, native);
+                callback(
+                    root,
+                    native
+                );
             }
         }
 
-        check('initial');
+        check(
+            'initial'
+        );
 
-        if (finished) return;
+        if (finished) {
+            return;
+        }
 
         try {
-            var initialRoot = activity.render();
+            var initialRoot =
+                activity.render();
 
             if (
                 initialRoot &&
@@ -166,15 +246,19 @@
                 observer =
                     new MutationObserver(
                         function () {
-                            check('mutation');
+                            check(
+                                'mutation'
+                            );
                         }
                     );
 
                 observer.observe(
                     initialRoot[0],
                     {
-                        childList: true,
-                        subtree: true
+                        childList:
+                            true,
+                        subtree:
+                            true
                     }
                 );
 
@@ -189,23 +273,28 @@
             );
         }
 
-        timer = setInterval(
-            function () {
-                check('poll');
-
-                if (
-                    !finished &&
-                    Date.now() - started >= 30000
-                ) {
-                    stop();
-
-                    error(
-                        'NATIVE RECOMMENDATIONS TIMEOUT: 30s'
+        timer =
+            setInterval(
+                function () {
+                    check(
+                        'poll'
                     );
-                }
-            },
-            300
-        );
+
+                    if (
+                        !finished &&
+                        Date.now() -
+                            started >=
+                            30000
+                    ) {
+                        stop();
+
+                        error(
+                            'NATIVE RECOMMENDATIONS TIMEOUT: 30s'
+                        );
+                    }
+                },
+                300
+            );
     }
 
     function loadKPSource(done) {
@@ -216,8 +305,12 @@
             Lampa.Api.sources &&
             Lampa.Api.sources.KP
         ) {
-            log('KP SOURCE ALREADY READY');
+            log(
+                'KP SOURCE ALREADY READY'
+            );
+
             done();
+
             return;
         }
 
@@ -233,9 +326,12 @@
                             Lampa.Api.sources &&
                             Lampa.Api.sources.KP
                         ) {
-                            clearInterval(waitTimer);
+                            clearInterval(
+                                waitTimer
+                            );
 
-                            kpLoaded = true;
+                            kpLoaded =
+                                true;
 
                             log(
                                 'KP SOURCE READY AFTER WAIT'
@@ -243,9 +339,12 @@
 
                             done();
                         } else if (
-                            ++attempts >= 60
+                            ++attempts >=
+                            60
                         ) {
-                            clearInterval(waitTimer);
+                            clearInterval(
+                                waitTimer
+                            );
 
                             error(
                                 'KP SOURCE WAIT TIMEOUT'
@@ -260,69 +359,86 @@
 
         kpLoading = true;
 
-        log('KP SOURCE LOAD START');
+        log(
+            'KP SOURCE LOAD START'
+        );
+
         log(
             'KP SOURCE URL:',
             KP_SOURCE_URL
         );
 
         var script =
-            document.createElement('script');
-
-        script.onload = function () {
-            log(
-                'KP SOURCE NETWORK LOADED'
+            document.createElement(
+                'script'
             );
 
-            var attempts = 0;
-
-            var timer =
-                setInterval(
-                    function () {
-                        if (
-                            window.Lampa &&
-                            Lampa.Api &&
-                            Lampa.Api.sources &&
-                            Lampa.Api.sources.KP
-                        ) {
-                            clearInterval(timer);
-
-                            kpLoaded = true;
-                            kpLoading = false;
-
-                            log(
-                                'KP SOURCE REGISTERED'
-                            );
-
-                            log(
-                                'KP SOURCE READY'
-                            );
-
-                            done();
-                        } else if (
-                            ++attempts >= 40
-                        ) {
-                            clearInterval(timer);
-
-                            kpLoading = false;
-
-                            error(
-                                'KP SOURCE REGISTER ERROR'
-                            );
-                        }
-                    },
-                    250
+        script.onload =
+            function () {
+                log(
+                    'KP SOURCE NETWORK LOADED'
                 );
-        };
 
-        script.onerror = function (e) {
-            kpLoading = false;
+                var attempts = 0;
 
-            error(
-                'KP SOURCE LOAD ERROR:',
-                e
-            );
-        };
+                var timer =
+                    setInterval(
+                        function () {
+                            if (
+                                window.Lampa &&
+                                Lampa.Api &&
+                                Lampa.Api.sources &&
+                                Lampa.Api.sources.KP
+                            ) {
+                                clearInterval(
+                                    timer
+                                );
+
+                                kpLoaded =
+                                    true;
+
+                                kpLoading =
+                                    false;
+
+                                log(
+                                    'KP SOURCE REGISTERED'
+                                );
+
+                                log(
+                                    'KP SOURCE READY'
+                                );
+
+                                done();
+                            } else if (
+                                ++attempts >=
+                                40
+                            ) {
+                                clearInterval(
+                                    timer
+                                );
+
+                                kpLoading =
+                                    false;
+
+                                error(
+                                    'KP SOURCE REGISTER ERROR'
+                                );
+                            }
+                        },
+                        250
+                    );
+            };
+
+        script.onerror =
+            function (e) {
+                kpLoading =
+                    false;
+
+                error(
+                    'KP SOURCE LOAD ERROR:',
+                    e
+                );
+            };
 
         script.src =
             KP_SOURCE_URL;
@@ -338,6 +454,7 @@
     ) {
         if (!imdbId) {
             callback(null);
+
             return;
         }
 
@@ -359,7 +476,9 @@
 
         var url =
             'https://query.wikidata.org/sparql?format=json&query=' +
-            encodeURIComponent(query);
+            encodeURIComponent(
+                query
+            );
 
         var request =
             new Lampa.Reguest();
@@ -379,28 +498,37 @@
                             ? json.results.bindings
                             : [];
 
-                    if (!bindings.length) {
+                    if (
+                        !bindings.length
+                    ) {
                         log(
                             'WIKIDATA KP ID: NOT FOUND'
                         );
 
-                        callback(null);
+                        callback(
+                            null
+                        );
+
                         return;
                     }
 
                     var kp =
                         bindings[0].kp &&
                         bindings[0].kp.value
-                            ? bindings[0].kp.value
+                            ? bindings[0]
+                                  .kp
+                                  .value
                             : '';
 
                     log(
                         'WIKIDATA KP ID:',
-                        kp || 'NOT FOUND'
+                        kp ||
+                            'NOT FOUND'
                     );
 
                     callback(
-                        kp || null
+                        kp ||
+                            null
                     );
                 } catch (e) {
                     error(
@@ -408,7 +536,9 @@
                         e
                     );
 
-                    callback(null);
+                    callback(
+                        null
+                    );
                 }
             },
             function (a, b) {
@@ -418,111 +548,63 @@
                     b
                 );
 
-                callback(null);
+                callback(
+                    null
+                );
             }
         );
     }
 
     /*
-     * Получаем реальные модули Card из текущей
-     * версии Lampa.
+     * =========================================================
+     * REAL LAMPA CARD
+     * =========================================================
      *
-     * В старом примере документации используется
-     * Create, но в текущем модульном Card map
-     * есть Card, Callback, Style, Ratting, Release,
-     * Favorite, Watched, Menu, Icons и т.д.
+     * ВАЖНО:
+     *
+     * Lampa.Maker.make('Card', ...)
+     * создаёт настоящий Card.
+     *
+     * Его DOM находится в:
+     *
+     *     card.html
+     *
+     * НЕ:
+     *
+     *     card.render()
+     *
+     * Именно это было причиной CARD COUNT = 0.
      */
-    function getCardModules() {
-        var wanted = [
-            'Card',
-            'Callback',
-            'Style',
-            'Ratting',
-            'Release',
-            'Favorite',
-            'Watched',
-            'Icons',
-            'Menu',
-            'Plugins',
-            'Subscribe',
-            'Lgbt'
-        ];
-
-        var available = [];
-
+    function createNativeCard(data) {
         try {
             var helper =
                 Lampa.Maker.module(
                     'Card'
                 );
 
-            var names =
+            var moduleNames =
                 helper &&
                 helper.moduleNames
-                    ? helper.moduleNames
+                    ? helper.moduleNames.slice()
                     : [];
 
             log(
-                'CARD MODULES AVAILABLE:',
-                names
+                'CARD MODULES:',
+                moduleNames
             );
 
-            for (
-                var i = 0;
-                i < wanted.length;
-                i++
+            if (
+                !moduleNames.length
             ) {
-                if (
-                    names.indexOf(
-                        wanted[i]
-                    ) !== -1
-                ) {
-                    available.push(
-                        wanted[i]
-                    );
-                }
+                error(
+                    'CARD MODULES EMPTY'
+                );
+
+                return null;
             }
-        } catch (e) {
-            error(
-                'CARD MODULE LIST ERROR:',
-                e
-            );
-        }
-
-        /*
-         * Card + Callback обязательны.
-         */
-        if (
-            available.indexOf('Card') === -1
-        ) {
-            available.unshift(
-                'Card'
-            );
-        }
-
-        if (
-            available.indexOf('Callback') === -1
-        ) {
-            available.push(
-                'Callback'
-            );
-        }
-
-        log(
-            'CARD MODULES SELECTED:',
-            available
-        );
-
-        return available;
-    }
-
-    function createNativeCard(data) {
-        try {
-            var modules =
-                getCardModules();
 
             log(
-                'CREATE NATIVE CARD:',
+                'CREATE REAL LAMPA CARD:',
                 data.title ||
                     data.name ||
                     'Без названия',
@@ -530,117 +612,108 @@
                 data.id
             );
 
+            /*
+             * Используем ВСЕ модули Card,
+             * которые реально есть в текущей Lampa.
+             */
             var card =
                 Lampa.Maker.make(
                     'Card',
                     data,
-                    function (module) {
+                    function (
+                        module
+                    ) {
                         module.only.apply(
                             module,
-                            modules
+                            moduleNames
                         );
                     }
                 );
 
             if (!card) {
                 error(
-                    'NATIVE CARD CREATE RETURNED NULL'
-                );
-
-                return null;
-            }
-
-            /*
-             * Нативный Card сам создаёт:
-             *
-             * .card
-             * .card__view
-             * .card__img
-             * .card__title
-             * .card__age
-             * .card__vote
-             *
-             * через свой Card module.
-             */
-
-            card.use({
-                onFocus: function () {
-                    try {
-                        if (
-                            window.Background &&
-                            typeof Background.change ===
-                                'function'
-                        ) {
-                            Background.change(
-                                Lampa.Utils
-                                    .cardImgBackground(
-                                        this.data
-                                    )
-                            );
-                        }
-                    } catch (e) {}
-                },
-
-                onEnter: function () {
-                    log(
-                        'CARD ENTER:',
-                        this.data &&
-                        (
-                            this.data.title ||
-                            this.data.name
-                        ),
-                        '|',
-                        this.data &&
-                        this.data.id
-                    );
-
-                    try {
-                        Router.call(
-                            'full',
-                            this.data
-                        );
-                    } catch (e) {
-                        error(
-                            'ROUTER ERROR:',
-                            e
-                        );
-                    }
-                }
-            });
-
-            var element = null;
-
-            if (
-                typeof card.render ===
-                'function'
-            ) {
-                element =
-                    card.render();
-            }
-
-            if (!element) {
-                error(
-                    'NATIVE CARD RENDER RETURNED NULL'
+                    'CARD INSTANCE NULL'
                 );
 
                 return null;
             }
 
             log(
-                'NATIVE CARD DOM:',
-                element &&
-                element.length
-                    ? element[0]
-                    : element
+                'CARD INSTANCE CREATED'
+            );
+
+            /*
+             * Нативный Callback module
+             * работает через события Lampa.
+             */
+            card.use({
+                onFocus:
+                    function () {
+                        try {
+                            Background.change(
+                                Utils.cardImgBackground(
+                                    this.data
+                                )
+                            );
+                        } catch (e) {}
+                    },
+
+                onEnter:
+                    function () {
+                        log(
+                            'CARD ENTER:',
+                            this.data &&
+                                (
+                                    this.data
+                                        .title ||
+                                    this.data
+                                        .name
+                                ),
+                            '|',
+                            this.data &&
+                                this.data.id
+                        );
+
+                        try {
+                            Router.call(
+                                'full',
+                                this.data
+                            );
+                        } catch (e) {
+                            error(
+                                'ROUTER ERROR:',
+                                e
+                            );
+                        }
+                    }
+            });
+
+            /*
+             * Вот настоящий DOM Lampa Card.
+             */
+            if (!card.html) {
+                error(
+                    'CARD.HTML NOT FOUND'
+                );
+
+                return null;
+            }
+
+            log(
+                'REAL CARD HTML:',
+                card.html
             );
 
             return {
-                instance: card,
-                element: element
+                instance:
+                    card,
+
+                element:
+                    card.html
             };
         } catch (e) {
             error(
-                'NATIVE CARD ERROR:',
+                'REAL CARD ERROR:',
                 e
             );
 
@@ -648,7 +721,9 @@
         }
     }
 
-    function createRow(results) {
+    function createRow(
+        results
+    ) {
         var row =
             $(
                 '<div class="items-line kp-recommendations-line layer--visible layer--render">'
@@ -707,17 +782,13 @@
                 continue;
             }
 
-            if (
-                created.element.jquery
-            ) {
-                mapping.append(
-                    created.element
-                );
-            } else {
-                mapping.append(
-                    $(created.element)
-                );
-            }
+            /*
+             * card.html уже является
+             * jQuery-compatible Lampa element.
+             */
+            mapping.append(
+                created.element
+            );
 
             cardCount++;
         }
@@ -743,13 +814,16 @@
         );
 
         log(
-            'NATIVE CARD DOM COUNT:',
+            'REAL LAMPA CARD DOM COUNT:',
             cardCount
         );
 
         return {
-            row: row,
-            cardCount: cardCount
+            row:
+                row,
+
+            cardCount:
+                cardCount
         };
     }
 
@@ -813,20 +887,24 @@
 
         log(
             'ROW CONNECTED:',
-            !!row.closest('body').length
+            !!row.closest(
+                'body'
+            ).length
         );
 
         log(
             'ROW CARD COUNT:',
-            row.find('.card').length
+            row.find(
+                '.card'
+            ).length
         );
 
-        var timerAttempts = 0;
+        var attempts = 0;
 
         var timer =
             setInterval(
                 function () {
-                    timerAttempts++;
+                    attempts++;
 
                     var exists =
                         root.find(
@@ -837,7 +915,7 @@
 
                     log(
                         'DOM WATCH #' +
-                            timerAttempts +
+                            attempts +
                             ': ROW=' +
                             exists.length +
                             ' CARDS=' +
@@ -857,9 +935,10 @@
                         if (
                             currentNative
                         ) {
-                            $(row).insertAfter(
-                                currentNative
-                            );
+                            $(row)
+                                .insertAfter(
+                                    currentNative
+                                );
 
                             log(
                                 'ROW REINSERTED'
@@ -868,7 +947,8 @@
                     }
 
                     if (
-                        timerAttempts >= 10
+                        attempts >=
+                        10
                     ) {
                         clearInterval(
                             timer
@@ -924,7 +1004,9 @@
             function () {
                 findKPIdByIMDb(
                     imdbId,
-                    function (kpId) {
+                    function (
+                        kpId
+                    ) {
                         if (!kpId) {
                             error(
                                 'FINAL KP ID NOT FOUND'
@@ -940,15 +1022,20 @@
 
                         var params = {
                             card: {
-                                source: 'KP',
+                                source:
+                                    'KP',
+
                                 id:
                                     'KP_' +
                                     kpId,
+
                                 kinopoisk_id:
                                     kpId,
+
                                 title:
                                     card.title ||
                                     '',
+
                                 type:
                                     card.type ||
                                     'movie'
@@ -1054,17 +1141,19 @@
         }
 
         if (
-            window.__kp_ui_157_installed
+            window.__kp_ui_158_installed
         ) {
             return true;
         }
 
-        window.__kp_ui_157_installed =
+        window.__kp_ui_158_installed =
             true;
 
         Lampa.Listener.follow(
             'full',
-            function (event) {
+            function (
+                event
+            ) {
                 if (
                     !event ||
                     event.type !==
@@ -1118,7 +1207,8 @@
             function () {
                 if (
                     install() ||
-                    ++attempts >= 120
+                    ++attempts >=
+                        120
                 ) {
                     clearInterval(
                         installTimer
