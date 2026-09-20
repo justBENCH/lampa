@@ -1,7 +1,8 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.6.1';
+    var VERSION = '1.6.0';
+    var VERSION = '1.6.2';
     var KP_SOURCE_URL = 'https://nb557.github.io/plugins/kp_source.js';
     var loading = false;
     var mounted = false;
@@ -68,6 +69,24 @@
         if (data && Array.isArray(data.results)) return data.results;
         if (data && data.body && Array.isArray(data.body.results)) return data.body.results;
         return [];
+        var groups = Array.isArray(data) ? data : [data];
+        var results = [];
+
+        groups.forEach(function (group) {
+            if (!group) return;
+
+            // KP discovery.search returns category groups (movies/TV), not
+            // cards directly.  Unwrap both groups before selecting an item.
+            if (Array.isArray(group.results)) {
+                results = results.concat(group.results);
+            } else if (group.body && Array.isArray(group.body.results)) {
+                results = results.concat(group.body.results);
+            } else if (group.id || group.kinopoisk_id) {
+                results.push(group);
+            }
+        });
+
+        return results;
     }
 
     function kpId(item) {
