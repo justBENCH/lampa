@@ -1,14 +1,14 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.5.10';
-    var BUILD = '2026-09-20-17-20';
+    var VERSION = '1.5.11';
+    var BUILD = '2026-09-20-17-35';
 
     console.log('[KP UI v' + VERSION + '] VERSION:', VERSION);
     console.log('[KP UI v' + VERSION + '] BUILD:', BUILD);
 
     var KP_SOURCE_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=1.5.10';
+        'https://nb557.github.io/plugins/kp_source.js?v=1.5.11';
 
     var WIKIDATA_API =
         'https://query.wikidata.org/sparql';
@@ -151,28 +151,69 @@
         return imdb;
     }
 
-    function wikidataRequest(url, callback, failed) {
-        fetch(url, {
-            method: 'GET',
-            headers: {
-                Accept: 'application/sparql-results+json'
-            }
-        })
-            .then(function (response) {
-                if (!response.ok) {
-                    throw new Error('HTTP ' + response.status);
-                }
+    /*
+     * ВАЖНО:
+     * Не используем fetch().
+     * Для Lampa используем штатный Lampa.Reguest.
+     */
+    function lampaRequest(url, callback, failed) {
+        var network = new Lampa.Reguest();
 
-                return response.json();
-            })
-            .then(callback)
-            .catch(function (e) {
-                error('WIKIDATA ERROR:', e);
+        try {
+            network.timeout(15000);
+        } catch (e) {}
+
+        log('REQUEST:', url);
+
+        network.silent(
+            url,
+            function (response) {
+                log('REQUEST OK');
+
+                callback(response);
+            },
+            function (a, b) {
+                error(
+                    'REQUEST ERROR:',
+                    a,
+                    b
+                );
 
                 if (failed) {
-                    failed(e);
+                    failed(a, b);
                 }
-            });
+            },
+            false,
+            {
+                dataType: 'text'
+            }
+        );
+
+        return network;
+    }
+
+    function parseJSON(data) {
+        if (typeof data === 'object') {
+            return data;
+        }
+
+        if (typeof data !== 'string') {
+            return null;
+        }
+
+        try {
+            return JSON.parse(data);
+        } catch (e) {
+            error(
+                'JSON PARSE ERROR:',
+                data &&
+                    data.substring
+                    ? data.substring(0, 300)
+                    : data
+            );
+
+            return null;
+        }
     }
 
     function imdbToWikidata(imdb, callback) {
@@ -194,34 +235,68 @@
             encodeURIComponent(query) +
             '&format=json';
 
-        log('WIKIDATA IMDb → QID:', imdb);
+        log(
+            'WIKIDATA IMDb → QID:',
+            imdb
+        );
 
-        wikidataRequest(
+        lampaRequest(
             url,
-            function (json) {
+            function (response) {
+                var json = parseJSON(response);
+
+                if (!json) {
+                    error(
+                        'WIKIDATA INVALID RESPONSE'
+                    );
+
+                    callback(null);
+                    return;
+                }
+
                 try {
                     var bindings =
                         json.results &&
                         json.results.bindings;
 
-                    if (!bindings || !bindings.length) {
-                        error('WIKIDATA QID NOT FOUND');
+                    if (
+                        !bindings ||
+                        !bindings.length
+                    ) {
+                        error(
+                            'WIKIDATA QID NOT FOUND'
+                        );
+
                         callback(null);
                         return;
                     }
 
-                    var uri = bindings[0].item.value;
-                    var qid = uri.split('/').pop();
+                    var uri =
+                        bindings[0].item.value;
 
-                    log('WIKIDATA QID:', qid);
+                    var qid =
+                        uri.split('/').pop();
+
+                    log(
+                        'WIKIDATA QID:',
+                        qid
+                    );
 
                     callback(qid);
                 } catch (e) {
-                    error('WIKIDATA PARSE ERROR:', e);
+                    error(
+                        'WIKIDATA PARSE ERROR:',
+                        e
+                    );
+
                     callback(null);
                 }
             },
             function () {
+                error(
+                    'WIKIDATA IMDb REQUEST FAILED'
+                );
+
                 callback(null);
             }
         );
@@ -238,31 +313,63 @@
             encodeURIComponent(qid) +
             '.json';
 
-        log('WIKIDATA → KP:', qid);
+        log(
+            'WIKIDATA → KP:',
+            qid
+        );
 
-        wikidataRequest(
+        lampaRequest(
             url,
-            function (json) {
+            function (response) {
+                var json =
+                    parseJSON(response);
+
+                if (!json) {
+                    error(
+                        'WIKIDATA ENTITY INVALID RESPONSE'
+                    );
+
+                    callback(null);
+                    return;
+                }
+
                 try {
                     var entity =
                         json.entities &&
                         json.entities[qid];
 
-                    if (!entity || !entity.claims) {
-                        error('NO WIKIDATA ENTITY');
+                    if (
+                        !entity ||
+                        !entity.claims
+                    ) {
+                        error(
+                            'NO WIKIDATA ENTITY'
+                        );
+
                         callback(null);
                         return;
                     }
 
-                    var claims = entity.claims.P2603;
+                    var claims =
+                        entity.claims.P2603;
 
-                    if (!claims || !claims.length) {
-                        error('KP PROPERTY P2603 NOT FOUND');
+                    if (
+                        !claims ||
+                        !claims.length
+                    ) {
+                        error(
+                            'KP PROPERTY P2603 NOT FOUND'
+                        );
+
                         callback(null);
                         return;
                     }
 
-                    for (var i = 0; i < claims.length; i++) {
+                    for (
+                        var i = 0;
+                        i < claims.length;
+                        i++
+                    ) {
                         var datavalue =
                             claims[i].mainsnak &&
                             claims[i].mainsnak.datavalue;
@@ -271,33 +378,57 @@
                             continue;
                         }
 
-                        var value = datavalue.value;
+                        var value =
+                            datavalue.value;
 
-                        if (typeof value === 'string') {
-                            log('KP ID:', value);
+                        if (
+                            typeof value ===
+                            'string'
+                        ) {
+                            log(
+                                'KP ID:',
+                                value
+                            );
+
                             callback(value);
                             return;
                         }
 
                         if (
                             value &&
-                            typeof value === 'object' &&
+                            typeof value ===
+                                'object' &&
                             value.id
                         ) {
-                            log('KP ID:', value.id);
+                            log(
+                                'KP ID:',
+                                value.id
+                            );
+
                             callback(value.id);
                             return;
                         }
                     }
 
-                    error('KP ID NOT FOUND');
+                    error(
+                        'KP ID NOT FOUND'
+                    );
+
                     callback(null);
                 } catch (e) {
-                    error('WIKIDATA ENTITY ERROR:', e);
+                    error(
+                        'WIKIDATA ENTITY ERROR:',
+                        e
+                    );
+
                     callback(null);
                 }
             },
             function () {
+                error(
+                    'WIKIDATA ENTITY REQUEST FAILED'
+                );
+
                 callback(null);
             }
         );
@@ -310,14 +441,23 @@
             Lampa.Api.sources &&
             Lampa.Api.sources.KP
         ) {
-            log('KP SOURCE ALREADY LOADED');
+            log(
+                'KP SOURCE ALREADY LOADED'
+            );
+
             callback(true);
             return;
         }
 
-        log('LOAD KP SOURCE:', KP_SOURCE_URL);
+        log(
+            'LOAD KP SOURCE:',
+            KP_SOURCE_URL
+        );
 
-        var script = document.createElement('script');
+        var script =
+            document.createElement(
+                'script'
+            );
 
         script.src =
             KP_SOURCE_URL +
@@ -325,7 +465,9 @@
             Date.now();
 
         script.onload = function () {
-            log('KP SOURCE SCRIPT LOADED');
+            log(
+                'KP SOURCE SCRIPT LOADED'
+            );
 
             waitFor(
                 function () {
@@ -338,10 +480,16 @@
                 },
                 function (ready) {
                     if (ready) {
-                        log('KP SOURCE READY');
+                        log(
+                            'KP SOURCE READY'
+                        );
+
                         callback(true);
                     } else {
-                        error('KP SOURCE TIMEOUT');
+                        error(
+                            'KP SOURCE TIMEOUT'
+                        );
+
                         callback(false);
                     }
                 },
@@ -350,30 +498,48 @@
         };
 
         script.onerror = function (e) {
-            error('KP SOURCE SCRIPT ERROR:', e);
+            error(
+                'KP SOURCE SCRIPT ERROR:',
+                e
+            );
+
             callback(false);
         };
 
-        document.head.appendChild(script);
+        document.head.appendChild(
+            script
+        );
     }
 
-    function getKPFull(kpId, callback) {
+    function getKPFull(
+        kpId,
+        callback
+    ) {
         if (
             !Lampa.Api ||
             !Lampa.Api.sources ||
             !Lampa.Api.sources.KP
         ) {
-            error('KP SOURCE IS NOT READY');
+            error(
+                'KP SOURCE IS NOT READY'
+            );
+
             callback(null);
             return;
         }
 
-        log('KP FULL:', kpId);
+        log(
+            'KP FULL:',
+            kpId
+        );
 
         var card = {
             source: 'KP',
-            kinopoisk_id: String(kpId),
-            id: 'KP_' + kpId,
+            kinopoisk_id:
+                String(kpId),
+            id:
+                'KP_' +
+                kpId,
             title: ''
         };
 
@@ -390,17 +556,28 @@
                             ? json.simular.results.length
                             : 0;
 
-                    log('KP FULL RESULT:', count);
+                    log(
+                        'KP FULL RESULT:',
+                        count
+                    );
 
                     callback(json);
                 },
                 function (e) {
-                    error('KP FULL ERROR:', e);
+                    error(
+                        'KP FULL ERROR:',
+                        e
+                    );
+
                     callback(null);
                 }
             );
         } catch (e) {
-            error('KP FULL EXCEPTION:', e);
+            error(
+                'KP FULL EXCEPTION:',
+                e
+            );
+
             callback(null);
         }
     }
@@ -420,17 +597,28 @@
 
         return results
             .filter(function (item) {
-                return item && item.title;
+                return (
+                    item &&
+                    item.title
+                );
             })
             .map(function (item) {
                 item.source = 'KP';
 
-                if (!item.kinopoisk_id && item.id) {
+                if (
+                    !item.kinopoisk_id &&
+                    item.id
+                ) {
                     var match =
-                        String(item.id).match(/^KP_(.+)$/);
+                        String(
+                            item.id
+                        ).match(
+                            /^KP_(.+)$/
+                        );
 
                     if (match) {
-                        item.kinopoisk_id = match[1];
+                        item.kinopoisk_id =
+                            match[1];
                     }
                 }
 
@@ -439,61 +627,91 @@
     }
 
     function findRecommendations(root) {
-        if (!root || !root.find) {
+        if (
+            !root ||
+            !root.find
+        ) {
             return $();
         }
 
         var result = $();
 
-        root.find('.items-line').each(function () {
-            var title =
-                $(this)
-                    .find('.items-line__title')
-                    .first()
-                    .text()
-                    .trim()
-                    .toLowerCase();
+        root
+            .find('.items-line')
+            .each(function () {
+                var title =
+                    $(this)
+                        .find(
+                            '.items-line__title'
+                        )
+                        .first()
+                        .text()
+                        .trim()
+                        .toLowerCase();
 
-            if (title === 'рекомендации') {
-                result = $(this);
-                return false;
-            }
-        });
+                if (
+                    title ===
+                    'рекомендации'
+                ) {
+                    result =
+                        $(this);
+
+                    return false;
+                }
+            });
 
         return result;
     }
 
     function findSimilar(root) {
-        if (!root || !root.find) {
+        if (
+            !root ||
+            !root.find
+        ) {
             return $();
         }
 
         var result = $();
 
-        root.find('.items-line').each(function () {
-            var title =
-                $(this)
-                    .find('.items-line__title')
-                    .first()
-                    .text()
-                    .trim()
-                    .toLowerCase();
+        root
+            .find('.items-line')
+            .each(function () {
+                var title =
+                    $(this)
+                        .find(
+                            '.items-line__title'
+                        )
+                        .first()
+                        .text()
+                        .trim()
+                        .toLowerCase();
 
-            if (title === 'похожие') {
-                result = $(this);
-                return false;
-            }
-        });
+                if (
+                    title ===
+                    'похожие'
+                ) {
+                    result =
+                        $(this);
+
+                    return false;
+                }
+            });
 
         return result;
     }
 
-    function createNativeMain(results) {
+    function createNativeMain(
+        results
+    ) {
         if (
             !Lampa.Maker ||
-            typeof Lampa.Maker.make !== 'function'
+            typeof Lampa.Maker.make !==
+                'function'
         ) {
-            error('Lampa.Maker.make NOT FOUND');
+            error(
+                'Lampa.Maker.make NOT FOUND'
+            );
+
             return null;
         }
 
@@ -505,88 +723,134 @@
         var main;
 
         try {
-            main = Lampa.Maker.make(
-                'Main',
-                {
-                    title: 'Рекомендации Кинопоиска',
-                    results: results
-                }
-            );
+            main =
+                Lampa.Maker.make(
+                    'Main',
+                    {
+                        title:
+                            'Рекомендации Кинопоиска',
+                        results:
+                            results
+                    }
+                );
         } catch (e) {
-            error('MAIN CREATE ERROR:', e);
+            error(
+                'MAIN CREATE ERROR:',
+                e
+            );
+
             return null;
         }
 
         if (!main) {
-            error('MAIN INSTANCE EMPTY');
+            error(
+                'MAIN INSTANCE EMPTY'
+            );
+
             return null;
         }
 
-        log('MAIN CREATED');
+        log(
+            'MAIN CREATED'
+        );
 
         try {
             main.use({
-                onCreate: function () {
-                    log('MAIN onCreate');
+                onCreate:
+                    function () {
+                        log(
+                            'MAIN onCreate'
+                        );
 
-                    this.build([
-                        {
-                            title: 'Рекомендации Кинопоиска',
-                            results: results
-                        }
-                    ]);
-                },
+                        this.build([
+                            {
+                                title:
+                                    'Рекомендации Кинопоиска',
+                                results:
+                                    results
+                            }
+                        ]);
+                    },
 
-                onInstance: function (item, data) {
-                    item.use({
-                        onInstance: function (card, cardData) {
-                            card.use({
-                                onlyEnter: function () {
-                                    log(
-                                        'CARD ENTER:',
-                                        cardData &&
-                                            cardData.title
-                                    );
+                onInstance:
+                    function (
+                        item,
+                        data
+                    ) {
+                        item.use({
+                            onInstance:
+                                function (
+                                    card,
+                                    cardData
+                                ) {
+                                    card.use({
+                                        onlyEnter:
+                                            function () {
+                                                log(
+                                                    'CARD ENTER:',
+                                                    cardData &&
+                                                        cardData.title
+                                                );
 
-                                    Router.call(
-                                        'full',
-                                        cardData
-                                    );
-                                },
+                                                Router.call(
+                                                    'full',
+                                                    cardData
+                                                );
+                                            },
 
-                                onFocus: function () {
-                                    try {
-                                        Background.change(
-                                            Utils.cardImgBackground(
-                                                cardData
-                                            )
-                                        );
-                                    } catch (e) {}
+                                        onFocus:
+                                            function () {
+                                                try {
+                                                    Background.change(
+                                                        Utils.cardImgBackground(
+                                                            cardData
+                                                        )
+                                                    );
+                                                } catch (
+                                                    e
+                                                ) {}
+                                            }
+                                    });
                                 }
-                            });
-                        }
-                    });
-                }
+                        });
+                    }
             });
         } catch (e) {
-            error('MAIN USE ERROR:', e);
+            error(
+                'MAIN USE ERROR:',
+                e
+            );
+
             return null;
         }
 
         return main;
     }
 
-    function mountNativeMain(root, results) {
+    function mountNativeMain(
+        root,
+        results
+    ) {
         if (mounted) {
-            log('ALREADY MOUNTED');
+            log(
+                'ALREADY MOUNTED'
+            );
+
             return;
         }
 
         var recommendations =
-            findRecommendations(root);
+            findRecommendations(
+                root
+            );
 
-        if (!recommendations.length) {
-            error('NATIVE RECOMMENDATIONS NOT FOUND');
+        if (
+            !recommendations.length
+        ) {
+            error(
+                'NATIVE RECOMMENDATIONS NOT FOUND'
+            );
+
             return;
         }
 
@@ -594,8 +858,7 @@
             findSimilar(root);
 
         log(
-            'NATIVE RECOMMENDATIONS FOUND:',
-            recommendations.length
+            'NATIVE RECOMMENDATIONS FOUND'
         );
 
         log(
@@ -604,64 +867,83 @@
         );
 
         var main =
-            createNativeMain(results);
+            createNativeMain(
+                results
+            );
 
         if (!main) {
             return;
         }
 
-        waitFor(
+        /*
+         * Для Main сначала запускаем create(),
+         * чтобы модульная структура реально
+         * создала Line → Card.
+         */
+        try {
+            if (
+                typeof main.create ===
+                'function'
+            ) {
+                log(
+                    'CALL MAIN.CREATE'
+                );
+
+                main.create();
+            }
+        } catch (e) {
+            error(
+                'MAIN.CREATE ERROR:',
+                e
+            );
+        }
+
+        setTimeout(
             function () {
-                try {
-                    var rendered =
-                        typeof main.render === 'function'
-                            ? main.render()
-                            : null;
-
-                    if (!rendered) {
-                        return false;
-                    }
-
-                    return rendered;
-                } catch (e) {
-                    return false;
-                }
-            },
-            function (rendered) {
-                if (!rendered) {
-                    error('MAIN RENDER TIMEOUT');
-                    return;
-                }
-
-                log('MAIN RENDERED');
-
-                var element = null;
+                var element =
+                    null;
 
                 try {
                     if (
-                        rendered &&
-                        rendered.jquery
+                        main.render &&
+                        typeof main.render ===
+                            'function'
                     ) {
-                        element = rendered[0];
-                    } else if (
-                        rendered instanceof HTMLElement
-                    ) {
-                        element = rendered;
-                    } else if (
-                        rendered &&
-                        rendered[0] instanceof HTMLElement
-                    ) {
-                        element = rendered[0];
+                        var rendered =
+                            main.render();
+
+                        if (
+                            rendered &&
+                            rendered.jquery
+                        ) {
+                            element =
+                                rendered[0];
+                        } else if (
+                            rendered instanceof
+                            HTMLElement
+                        ) {
+                            element =
+                                rendered;
+                        } else if (
+                            rendered &&
+                            rendered[0] instanceof
+                                HTMLElement
+                        ) {
+                            element =
+                                rendered[0];
+                        }
                     }
                 } catch (e) {
                     error(
-                        'MAIN ELEMENT PARSE ERROR:',
+                        'MAIN.RENDER ERROR:',
                         e
                     );
                 }
 
                 if (!element) {
-                    error('MAIN ELEMENT NOT FOUND');
+                    error(
+                        'MAIN ELEMENT NOT FOUND'
+                    );
 
                     try {
                         log(
@@ -674,16 +956,21 @@
                 }
 
                 var parent =
-                    recommendations.parent()[0];
+                    recommendations
+                        .parent()[0];
 
                 if (!parent) {
-                    error('RECOMMENDATIONS PARENT NOT FOUND');
+                    error(
+                        'RECOMMENDATIONS PARENT NOT FOUND'
+                    );
+
                     return;
                 }
 
                 if (
                     similar.length &&
-                    similar.parent()[0] === parent
+                    similar.parent()[0] ===
+                        parent
                 ) {
                     parent.insertBefore(
                         element,
@@ -692,7 +979,8 @@
                 } else {
                     parent.insertBefore(
                         element,
-                        recommendations[0].nextSibling
+                        recommendations[0]
+                            .nextSibling
                     );
                 }
 
@@ -702,23 +990,32 @@
                     'NATIVE MAIN MOUNTED'
                 );
             },
-            5000
+            500
         );
     }
 
     function startKP(root) {
-        if (loading || mounted) {
+        if (
+            loading ||
+            mounted
+        ) {
             return;
         }
 
         loading = true;
 
-        log('START PIPELINE');
+        log(
+            'START PIPELINE'
+        );
 
-        var imdb = getIMDb();
+        var imdb =
+            getIMDb();
 
         if (!imdb) {
-            error('IMDb NOT FOUND');
+            error(
+                'IMDb NOT FOUND'
+            );
+
             loading = false;
             return;
         }
@@ -727,7 +1024,10 @@
             imdb,
             function (qid) {
                 if (!qid) {
-                    error('QID NOT FOUND');
+                    error(
+                        'QID NOT FOUND'
+                    );
+
                     loading = false;
                     return;
                 }
@@ -736,21 +1036,32 @@
                     qid,
                     function (kpId) {
                         if (!kpId) {
-                            error('KP ID NOT FOUND');
+                            error(
+                                'KP ID NOT FOUND'
+                            );
+
                             loading = false;
                             return;
                         }
 
                         loadKPSource(
-                            function (ready) {
-                                if (!ready) {
-                                    loading = false;
+                            function (
+                                ready
+                            ) {
+                                if (
+                                    !ready
+                                ) {
+                                    loading =
+                                        false;
+
                                     return;
                                 }
 
                                 getKPFull(
                                     kpId,
-                                    function (json) {
+                                    function (
+                                        json
+                                    ) {
                                         var results =
                                             normalizeResults(
                                                 json
@@ -768,7 +1079,9 @@
                                                 'NO KP SIMILAR RESULTS'
                                             );
 
-                                            loading = false;
+                                            loading =
+                                                false;
+
                                             return;
                                         }
 
@@ -777,7 +1090,8 @@
                                             results
                                         );
 
-                                        loading = false;
+                                        loading =
+                                            false;
                                     }
                                 );
                             }
@@ -789,7 +1103,11 @@
     }
 
     function handleFull(e) {
-        if (!e || e.type !== 'complite') {
+        if (
+            !e ||
+            e.type !==
+                'complite'
+        ) {
             return;
         }
 
@@ -799,34 +1117,50 @@
             typeof e.object.activity.render !==
                 'function'
         ) {
-            error('FULL ACTIVITY RENDER NOT FOUND');
+            error(
+                'FULL ACTIVITY RENDER NOT FOUND'
+            );
+
             return;
         }
 
         var root =
             e.object.activity.render();
 
-        if (!root || !root.find) {
-            error('FULL ROOT NOT FOUND');
+        if (
+            !root ||
+            !root.find
+        ) {
+            error(
+                'FULL ROOT NOT FOUND'
+            );
+
             return;
         }
 
         mounted = false;
         loading = false;
 
-        log('FULL COMPLITE');
+        log(
+            'FULL COMPLITE'
+        );
 
         waitFor(
             function () {
-                return findRecommendations(root).length
+                return findRecommendations(
+                    root
+                ).length
                     ? root
                     : false;
             },
-            function (readyRoot) {
+            function (
+                readyRoot
+            ) {
                 if (!readyRoot) {
                     error(
                         'RECOMMENDATIONS TIMEOUT'
                     );
+
                     return;
                 }
 
@@ -834,14 +1168,18 @@
                     'RECOMMENDATIONS READY'
                 );
 
-                startKP(readyRoot);
+                startKP(
+                    readyRoot
+                );
             },
             20000
         );
     }
 
     function init() {
-        log('INIT');
+        log(
+            'INIT'
+        );
 
         log(
             'LAMPA DIGITAL:',
@@ -852,11 +1190,13 @@
         if (
             Lampa.Manifest &&
             Lampa.Manifest.app_digital &&
-            Lampa.Manifest.app_digital < 300
+            Lampa.Manifest.app_digital <
+                300
         ) {
             error(
                 'LAMPA < 3.0 — MODULAR MAIN UNSUPPORTED'
             );
+
             return;
         }
 
@@ -865,7 +1205,9 @@
             typeof Lampa.Listener.follow ===
                 'function'
         ) {
-            log('LISTENER.FOLLOW READY');
+            log(
+                'LISTENER.FOLLOW READY'
+            );
 
             Lampa.Listener.follow(
                 'full',
@@ -880,29 +1222,33 @@
                 'Lampa.Listener.follow NOT FOUND'
             );
         }
-
-        if (window.appready) {
-            log('APP ALREADY READY');
-        }
     }
 
-    if (window.__KP_UI_1510__) {
+    if (
+        window.__KP_UI_1511__
+    ) {
         console.log(
             '[KP UI v' +
                 VERSION +
                 '] ALREADY INSTALLED'
         );
+
         return;
     }
 
-    window.__KP_UI_1510__ = true;
+    window.__KP_UI_1511__ = true;
 
     try {
         init();
     } catch (e) {
         error(
             'INIT FATAL:',
-            e && (e.stack || e.message || e)
+            e &&
+                (
+                    e.stack ||
+                    e.message ||
+                    e
+                )
         );
     }
 })();
