@@ -1,20 +1,14 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.5.11';
-    var BUILD = '2026-09-20-17-35';
+    var VERSION = '1.5.12';
+    var BUILD = '2026-09-20-17-45';
 
     console.log('[KP UI v' + VERSION + '] VERSION:', VERSION);
     console.log('[KP UI v' + VERSION + '] BUILD:', BUILD);
 
     var KP_SOURCE_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=1.5.11';
-
-    var WIKIDATA_API =
-        'https://query.wikidata.org/sparql';
-
-    var WIKIDATA_ENTITY =
-        'https://www.wikidata.org/wiki/Special:EntityData/';
+        'https://nb557.github.io/plugins/kp_source.js?v=1.5.12';
 
     var mounted = false;
     var loading = false;
@@ -75,68 +69,7 @@
         return null;
     }
 
-    function findIMDb(value, visited) {
-        if (!value || typeof value !== 'object') {
-            return null;
-        }
-
-        visited = visited || [];
-
-        if (visited.indexOf(value) >= 0) {
-            return null;
-        }
-
-        visited.push(value);
-
-        if (visited.length > 1500) {
-            return null;
-        }
-
-        if (
-            typeof value.imdb_id === 'string' &&
-            /^tt\d+$/i.test(value.imdb_id)
-        ) {
-            return value.imdb_id;
-        }
-
-        if (
-            typeof value.imdb === 'string' &&
-            /^tt\d+$/i.test(value.imdb)
-        ) {
-            return value.imdb;
-        }
-
-        var keys;
-
-        try {
-            keys = Object.keys(value);
-        } catch (e) {
-            return null;
-        }
-
-        for (var i = 0; i < keys.length; i++) {
-            var key = keys[i];
-
-            if (
-                key === 'parent' ||
-                key === 'activity' ||
-                key === 'component' ||
-                key === 'link'
-            ) {
-                continue;
-            }
-
-            var found = findIMDb(value[key], visited);
-
-            if (found) {
-                return found;
-            }
-        }
-
-        return null;
-    }
-
-    function getIMDb() {
+    function getCurrentCard() {
         var event = getCurrentEvent();
 
         if (!event) {
@@ -144,294 +77,34 @@
             return null;
         }
 
-        var imdb = findIMDb(event, []);
-
-        log('IMDb:', imdb);
-
-        return imdb;
-    }
-
-    /*
-     * ВАЖНО:
-     * Не используем fetch().
-     * Для Lampa используем штатный Lampa.Reguest.
-     */
-    function lampaRequest(url, callback, failed) {
-        var network = new Lampa.Reguest();
+        var card = null;
 
         try {
-            network.timeout(15000);
-        } catch (e) {}
-
-        log('REQUEST:', url);
-
-        network.silent(
-            url,
-            function (response) {
-                log('REQUEST OK');
-
-                callback(response);
-            },
-            function (a, b) {
-                error(
-                    'REQUEST ERROR:',
-                    a,
-                    b
-                );
-
-                if (failed) {
-                    failed(a, b);
-                }
-            },
-            false,
-            {
-                dataType: 'text'
+            if (event.object && event.object.card) {
+                card = event.object.card;
             }
-        );
 
-        return network;
-    }
-
-    function parseJSON(data) {
-        if (typeof data === 'object') {
-            return data;
-        }
-
-        if (typeof data !== 'string') {
-            return null;
-        }
-
-        try {
-            return JSON.parse(data);
+            if (!card && event.card) {
+                card = event.card;
+            }
         } catch (e) {
-            error(
-                'JSON PARSE ERROR:',
-                data &&
-                    data.substring
-                    ? data.substring(0, 300)
-                    : data
-            );
+            error('CARD READ ERROR:', e);
+        }
 
+        if (!card) {
+            error('CURRENT CARD NOT FOUND');
             return null;
         }
-    }
 
-    function imdbToWikidata(imdb, callback) {
-        if (!imdb) {
-            callback(null);
-            return;
-        }
+        log('CURRENT CARD:', {
+            id: card.id,
+            title: card.title,
+            year: card.year,
+            source: card.source,
+            imdb_id: card.imdb_id
+        });
 
-        var query =
-            'SELECT ?item WHERE {' +
-            '?item wdt:P345 "' +
-            imdb.replace(/"/g, '\\"') +
-            '".' +
-            '} LIMIT 1';
-
-        var url =
-            WIKIDATA_API +
-            '?query=' +
-            encodeURIComponent(query) +
-            '&format=json';
-
-        log(
-            'WIKIDATA IMDb → QID:',
-            imdb
-        );
-
-        lampaRequest(
-            url,
-            function (response) {
-                var json = parseJSON(response);
-
-                if (!json) {
-                    error(
-                        'WIKIDATA INVALID RESPONSE'
-                    );
-
-                    callback(null);
-                    return;
-                }
-
-                try {
-                    var bindings =
-                        json.results &&
-                        json.results.bindings;
-
-                    if (
-                        !bindings ||
-                        !bindings.length
-                    ) {
-                        error(
-                            'WIKIDATA QID NOT FOUND'
-                        );
-
-                        callback(null);
-                        return;
-                    }
-
-                    var uri =
-                        bindings[0].item.value;
-
-                    var qid =
-                        uri.split('/').pop();
-
-                    log(
-                        'WIKIDATA QID:',
-                        qid
-                    );
-
-                    callback(qid);
-                } catch (e) {
-                    error(
-                        'WIKIDATA PARSE ERROR:',
-                        e
-                    );
-
-                    callback(null);
-                }
-            },
-            function () {
-                error(
-                    'WIKIDATA IMDb REQUEST FAILED'
-                );
-
-                callback(null);
-            }
-        );
-    }
-
-    function wikidataToKP(qid, callback) {
-        if (!qid) {
-            callback(null);
-            return;
-        }
-
-        var url =
-            WIKIDATA_ENTITY +
-            encodeURIComponent(qid) +
-            '.json';
-
-        log(
-            'WIKIDATA → KP:',
-            qid
-        );
-
-        lampaRequest(
-            url,
-            function (response) {
-                var json =
-                    parseJSON(response);
-
-                if (!json) {
-                    error(
-                        'WIKIDATA ENTITY INVALID RESPONSE'
-                    );
-
-                    callback(null);
-                    return;
-                }
-
-                try {
-                    var entity =
-                        json.entities &&
-                        json.entities[qid];
-
-                    if (
-                        !entity ||
-                        !entity.claims
-                    ) {
-                        error(
-                            'NO WIKIDATA ENTITY'
-                        );
-
-                        callback(null);
-                        return;
-                    }
-
-                    var claims =
-                        entity.claims.P2603;
-
-                    if (
-                        !claims ||
-                        !claims.length
-                    ) {
-                        error(
-                            'KP PROPERTY P2603 NOT FOUND'
-                        );
-
-                        callback(null);
-                        return;
-                    }
-
-                    for (
-                        var i = 0;
-                        i < claims.length;
-                        i++
-                    ) {
-                        var datavalue =
-                            claims[i].mainsnak &&
-                            claims[i].mainsnak.datavalue;
-
-                        if (!datavalue) {
-                            continue;
-                        }
-
-                        var value =
-                            datavalue.value;
-
-                        if (
-                            typeof value ===
-                            'string'
-                        ) {
-                            log(
-                                'KP ID:',
-                                value
-                            );
-
-                            callback(value);
-                            return;
-                        }
-
-                        if (
-                            value &&
-                            typeof value ===
-                                'object' &&
-                            value.id
-                        ) {
-                            log(
-                                'KP ID:',
-                                value.id
-                            );
-
-                            callback(value.id);
-                            return;
-                        }
-                    }
-
-                    error(
-                        'KP ID NOT FOUND'
-                    );
-
-                    callback(null);
-                } catch (e) {
-                    error(
-                        'WIKIDATA ENTITY ERROR:',
-                        e
-                    );
-
-                    callback(null);
-                }
-            },
-            function () {
-                error(
-                    'WIKIDATA ENTITY REQUEST FAILED'
-                );
-
-                callback(null);
-            }
-        );
+        return card;
     }
 
     function loadKPSource(callback) {
@@ -441,23 +114,14 @@
             Lampa.Api.sources &&
             Lampa.Api.sources.KP
         ) {
-            log(
-                'KP SOURCE ALREADY LOADED'
-            );
-
+            log('KP SOURCE ALREADY LOADED');
             callback(true);
             return;
         }
 
-        log(
-            'LOAD KP SOURCE:',
-            KP_SOURCE_URL
-        );
+        log('LOAD KP SOURCE:', KP_SOURCE_URL);
 
-        var script =
-            document.createElement(
-                'script'
-            );
+        var script = document.createElement('script');
 
         script.src =
             KP_SOURCE_URL +
@@ -465,9 +129,7 @@
             Date.now();
 
         script.onload = function () {
-            log(
-                'KP SOURCE SCRIPT LOADED'
-            );
+            log('KP SOURCE SCRIPT LOADED');
 
             waitFor(
                 function () {
@@ -480,16 +142,10 @@
                 },
                 function (ready) {
                     if (ready) {
-                        log(
-                            'KP SOURCE READY'
-                        );
-
+                        log('KP SOURCE READY');
                         callback(true);
                     } else {
-                        error(
-                            'KP SOURCE TIMEOUT'
-                        );
-
+                        error('KP SOURCE TIMEOUT');
                         callback(false);
                     }
                 },
@@ -498,48 +154,303 @@
         };
 
         script.onerror = function (e) {
-            error(
-                'KP SOURCE SCRIPT ERROR:',
-                e
-            );
-
+            error('KP SOURCE SCRIPT ERROR:', e);
             callback(false);
         };
 
-        document.head.appendChild(
-            script
-        );
+        document.head.appendChild(script);
     }
 
-    function getKPFull(
-        kpId,
-        callback
-    ) {
+    function getKPIdFromResult(item) {
+        if (!item) {
+            return null;
+        }
+
+        if (item.kinopoisk_id) {
+            return String(item.kinopoisk_id);
+        }
+
+        if (item.id) {
+            var id = String(item.id);
+
+            if (id.indexOf('KP_') === 0) {
+                return id.substring(3);
+            }
+
+            if (/^\d+$/.test(id)) {
+                return id;
+            }
+        }
+
+        return null;
+    }
+
+    function normalizeSearchResults(data) {
+        if (!data) {
+            return [];
+        }
+
+        if (Array.isArray(data)) {
+            return data;
+        }
+
+        if (data.results && Array.isArray(data.results)) {
+            return data.results;
+        }
+
+        if (
+            data.body &&
+            data.body.results &&
+            Array.isArray(data.body.results)
+        ) {
+            return data.body.results;
+        }
+
+        return [];
+    }
+
+    function findBestKPResult(results, card) {
+        if (!results.length) {
+            return null;
+        }
+
+        var title =
+            card.title
+                ? String(card.title).trim().toLowerCase()
+                : '';
+
+        var year =
+            card.year
+                ? String(card.year)
+                : '';
+
+        log('SEARCH RESULTS:', results.length);
+
+        /*
+         * 1. Сначала точное название + год.
+         */
+        for (var i = 0; i < results.length; i++) {
+            var item = results[i];
+
+            if (!item) {
+                continue;
+            }
+
+            var itemTitle =
+                item.title
+                    ? String(item.title).trim().toLowerCase()
+                    : '';
+
+            var itemYear =
+                item.year
+                    ? String(item.year)
+                    : '';
+
+            if (
+                title &&
+                itemTitle === title &&
+                year &&
+                itemYear === year
+            ) {
+                log(
+                    'EXACT KP MATCH:',
+                    item.title,
+                    item.year,
+                    getKPIdFromResult(item)
+                );
+
+                return item;
+            }
+        }
+
+        /*
+         * 2. Название + год выпуска в диапазоне.
+         */
+        for (var j = 0; j < results.length; j++) {
+            var candidate = results[j];
+
+            if (!candidate) {
+                continue;
+            }
+
+            var candidateYear =
+                candidate.year
+                    ? String(candidate.year)
+                    : '';
+
+            if (
+                title &&
+                candidate.title &&
+                String(candidate.title)
+                    .trim()
+                    .toLowerCase() === title
+            ) {
+                if (
+                    !year ||
+                    candidateYear === year
+                ) {
+                    log(
+                        'TITLE MATCH:',
+                        candidate.title,
+                        candidate.year,
+                        getKPIdFromResult(candidate)
+                    );
+
+                    return candidate;
+                }
+            }
+        }
+
+        /*
+         * 3. Если точного совпадения нет —
+         * первый результат.
+         */
+        log(
+            'FALLBACK KP RESULT:',
+            results[0].title,
+            results[0].year,
+            getKPIdFromResult(results[0])
+        );
+
+        return results[0];
+    }
+
+    function searchKP(card, callback) {
         if (
             !Lampa.Api ||
             !Lampa.Api.sources ||
             !Lampa.Api.sources.KP
         ) {
-            error(
-                'KP SOURCE IS NOT READY'
-            );
+            error('KP SOURCE NOT READY');
+            callback(null);
+            return;
+        }
 
+        var KP = Lampa.Api.sources.KP;
+
+        if (
+            typeof KP.discovery !== 'function'
+        ) {
+            error('KP DISCOVERY NOT FOUND');
+            callback(null);
+            return;
+        }
+
+        var discovery;
+
+        try {
+            discovery = KP.discovery();
+        } catch (e) {
+            error('KP DISCOVERY CREATE ERROR:', e);
+            callback(null);
+            return;
+        }
+
+        if (
+            !discovery ||
+            typeof discovery.search !== 'function'
+        ) {
+            error('KP DISCOVERY SEARCH NOT FOUND');
+            callback(null);
+            return;
+        }
+
+        var query =
+            card.title
+                ? String(card.title).trim()
+                : '';
+
+        if (!query) {
+            error('CARD TITLE EMPTY');
             callback(null);
             return;
         }
 
         log(
-            'KP FULL:',
-            kpId
+            'KP SEARCH:',
+            query,
+            '| YEAR:',
+            card.year
         );
+
+        try {
+            discovery.search(
+                {
+                    query: query,
+                    page: 1
+                },
+                function (data) {
+                    var results =
+                        normalizeSearchResults(data);
+
+                    var best =
+                        findBestKPResult(
+                            results,
+                            card
+                        );
+
+                    if (!best) {
+                        error('KP SEARCH EMPTY');
+                        callback(null);
+                        return;
+                    }
+
+                    var kpId =
+                        getKPIdFromResult(best);
+
+                    if (!kpId) {
+                        error(
+                            'KP ID NOT FOUND IN RESULT:',
+                            best
+                        );
+
+                        callback(null);
+                        return;
+                    }
+
+                    log(
+                        'KP ID FROM SEARCH:',
+                        kpId
+                    );
+
+                    callback(kpId);
+                },
+                function (e) {
+                    error(
+                        'KP SEARCH ERROR:',
+                        e
+                    );
+
+                    callback(null);
+                }
+            );
+        } catch (e) {
+            error(
+                'KP SEARCH EXCEPTION:',
+                e
+            );
+
+            callback(null);
+        }
+    }
+
+    function getKPFull(kpId, callback) {
+        if (
+            !Lampa.Api ||
+            !Lampa.Api.sources ||
+            !Lampa.Api.sources.KP
+        ) {
+            error('KP SOURCE IS NOT READY');
+            callback(null);
+            return;
+        }
+
+        log('KP FULL:', kpId);
 
         var card = {
             source: 'KP',
-            kinopoisk_id:
-                String(kpId),
-            id:
-                'KP_' +
-                kpId,
+            kinopoisk_id: String(kpId),
+            id: 'KP_' + kpId,
             title: ''
         };
 
@@ -597,10 +508,7 @@
 
         return results
             .filter(function (item) {
-                return (
-                    item &&
-                    item.title
-                );
+                return item && item.title;
             })
             .map(function (item) {
                 item.source = 'KP';
@@ -610,9 +518,7 @@
                     item.id
                 ) {
                     var match =
-                        String(
-                            item.id
-                        ).match(
+                        String(item.id).match(
                             /^KP_(.+)$/
                         );
 
@@ -650,12 +556,9 @@
                         .toLowerCase();
 
                 if (
-                    title ===
-                    'рекомендации'
+                    title === 'рекомендации'
                 ) {
-                    result =
-                        $(this);
-
+                    result = $(this);
                     return false;
                 }
             });
@@ -687,12 +590,9 @@
                         .toLowerCase();
 
                 if (
-                    title ===
-                    'похожие'
+                    title === 'похожие'
                 ) {
-                    result =
-                        $(this);
-
+                    result = $(this);
                     return false;
                 }
             });
@@ -700,9 +600,7 @@
         return result;
     }
 
-    function createNativeMain(
-        results
-    ) {
+    function createNativeMain(results) {
         if (
             !Lampa.Maker ||
             typeof Lampa.Maker.make !==
@@ -750,70 +648,63 @@
             return null;
         }
 
-        log(
-            'MAIN CREATED'
-        );
+        log('MAIN CREATED');
 
         try {
             main.use({
-                onCreate:
-                    function () {
-                        log(
-                            'MAIN onCreate'
-                        );
+                onCreate: function () {
+                    log('MAIN onCreate');
 
-                        this.build([
-                            {
-                                title:
-                                    'Рекомендации Кинопоиска',
-                                results:
-                                    results
-                            }
-                        ]);
-                    },
+                    this.build([
+                        {
+                            title:
+                                'Рекомендации Кинопоиска',
+                            results:
+                                results
+                        }
+                    ]);
+                },
 
-                onInstance:
-                    function (
-                        item,
-                        data
-                    ) {
-                        item.use({
-                            onInstance:
-                                function (
-                                    card,
-                                    cardData
-                                ) {
-                                    card.use({
-                                        onlyEnter:
-                                            function () {
-                                                log(
-                                                    'CARD ENTER:',
-                                                    cardData &&
-                                                        cardData.title
-                                                );
+                onInstance: function (
+                    item,
+                    data
+                ) {
+                    item.use({
+                        onInstance: function (
+                            card,
+                            cardData
+                        ) {
+                            card.use({
+                                onlyEnter:
+                                    function () {
+                                        log(
+                                            'CARD ENTER:',
+                                            cardData &&
+                                                cardData.title
+                                        );
 
-                                                Router.call(
-                                                    'full',
+                                        Router.call(
+                                            'full',
+                                            cardData
+                                        );
+                                    },
+
+                                onFocus:
+                                    function () {
+                                        try {
+                                            Background.change(
+                                                Utils.cardImgBackground(
                                                     cardData
-                                                );
-                                            },
-
-                                        onFocus:
-                                            function () {
-                                                try {
-                                                    Background.change(
-                                                        Utils.cardImgBackground(
-                                                            cardData
-                                                        )
-                                                    );
-                                                } catch (
-                                                    e
-                                                ) {}
-                                            }
-                                    });
-                                }
-                        });
-                    }
+                                                )
+                                            );
+                                        } catch (
+                                            e
+                                        ) {}
+                                    }
+                            });
+                        }
+                    });
+                }
             });
         } catch (e) {
             error(
@@ -832,21 +723,14 @@
         results
     ) {
         if (mounted) {
-            log(
-                'ALREADY MOUNTED'
-            );
-
+            log('ALREADY MOUNTED');
             return;
         }
 
         var recommendations =
-            findRecommendations(
-                root
-            );
+            findRecommendations(root);
 
-        if (
-            !recommendations.length
-        ) {
+        if (!recommendations.length) {
             error(
                 'NATIVE RECOMMENDATIONS NOT FOUND'
             );
@@ -867,28 +751,18 @@
         );
 
         var main =
-            createNativeMain(
-                results
-            );
+            createNativeMain(results);
 
         if (!main) {
             return;
         }
 
-        /*
-         * Для Main сначала запускаем create(),
-         * чтобы модульная структура реально
-         * создала Line → Card.
-         */
         try {
             if (
                 typeof main.create ===
                 'function'
             ) {
-                log(
-                    'CALL MAIN.CREATE'
-                );
-
+                log('CALL MAIN.CREATE');
                 main.create();
             }
         } catch (e) {
@@ -900,14 +774,12 @@
 
         setTimeout(
             function () {
-                var element =
-                    null;
+                var element = null;
 
                 try {
                     if (
-                        main.render &&
                         typeof main.render ===
-                            'function'
+                        'function'
                     ) {
                         var rendered =
                             main.render();
@@ -927,7 +799,7 @@
                         } else if (
                             rendered &&
                             rendered[0] instanceof
-                                HTMLElement
+                            HTMLElement
                         ) {
                             element =
                                 rendered[0];
@@ -970,7 +842,7 @@
                 if (
                     similar.length &&
                     similar.parent()[0] ===
-                        parent
+                    parent
                 ) {
                     parent.insertBefore(
                         element,
@@ -1004,36 +876,25 @@
 
         loading = true;
 
-        log(
-            'START PIPELINE'
-        );
+        log('START PIPELINE');
 
-        var imdb =
-            getIMDb();
+        var card =
+            getCurrentCard();
 
-        if (!imdb) {
-            error(
-                'IMDb NOT FOUND'
-            );
-
+        if (!card) {
             loading = false;
             return;
         }
 
-        imdbToWikidata(
-            imdb,
-            function (qid) {
-                if (!qid) {
-                    error(
-                        'QID NOT FOUND'
-                    );
-
+        loadKPSource(
+            function (ready) {
+                if (!ready) {
                     loading = false;
                     return;
                 }
 
-                wikidataToKP(
-                    qid,
+                searchKP(
+                    card,
                     function (kpId) {
                         if (!kpId) {
                             error(
@@ -1044,56 +905,36 @@
                             return;
                         }
 
-                        loadKPSource(
-                            function (
-                                ready
-                            ) {
-                                if (
-                                    !ready
-                                ) {
-                                    loading =
-                                        false;
+                        getKPFull(
+                            kpId,
+                            function (json) {
+                                var results =
+                                    normalizeResults(
+                                        json
+                                    );
 
+                                log(
+                                    'SIMILAR RESULTS:',
+                                    results.length
+                                );
+
+                                if (
+                                    !results.length
+                                ) {
+                                    error(
+                                        'NO KP SIMILAR RESULTS'
+                                    );
+
+                                    loading = false;
                                     return;
                                 }
 
-                                getKPFull(
-                                    kpId,
-                                    function (
-                                        json
-                                    ) {
-                                        var results =
-                                            normalizeResults(
-                                                json
-                                            );
-
-                                        log(
-                                            'SIMILAR RESULTS:',
-                                            results.length
-                                        );
-
-                                        if (
-                                            !results.length
-                                        ) {
-                                            error(
-                                                'NO KP SIMILAR RESULTS'
-                                            );
-
-                                            loading =
-                                                false;
-
-                                            return;
-                                        }
-
-                                        mountNativeMain(
-                                            root,
-                                            results
-                                        );
-
-                                        loading =
-                                            false;
-                                    }
+                                mountNativeMain(
+                                    root,
+                                    results
                                 );
+
+                                loading = false;
                             }
                         );
                     }
@@ -1105,8 +946,7 @@
     function handleFull(e) {
         if (
             !e ||
-            e.type !==
-                'complite'
+            e.type !== 'complite'
         ) {
             return;
         }
@@ -1141,9 +981,7 @@
         mounted = false;
         loading = false;
 
-        log(
-            'FULL COMPLITE'
-        );
+        log('FULL COMPLITE');
 
         waitFor(
             function () {
@@ -1153,9 +991,7 @@
                     ? root
                     : false;
             },
-            function (
-                readyRoot
-            ) {
+            function (readyRoot) {
                 if (!readyRoot) {
                     error(
                         'RECOMMENDATIONS TIMEOUT'
@@ -1168,30 +1004,25 @@
                     'RECOMMENDATIONS READY'
                 );
 
-                startKP(
-                    readyRoot
-                );
+                startKP(readyRoot);
             },
             20000
         );
     }
 
     function init() {
-        log(
-            'INIT'
-        );
+        log('INIT');
 
         log(
             'LAMPA DIGITAL:',
             Lampa.Manifest &&
-                Lampa.Manifest.app_digital
+            Lampa.Manifest.app_digital
         );
 
         if (
             Lampa.Manifest &&
             Lampa.Manifest.app_digital &&
-            Lampa.Manifest.app_digital <
-                300
+            Lampa.Manifest.app_digital < 300
         ) {
             error(
                 'LAMPA < 3.0 — MODULAR MAIN UNSUPPORTED'
@@ -1203,7 +1034,7 @@
         if (
             Lampa.Listener &&
             typeof Lampa.Listener.follow ===
-                'function'
+            'function'
         ) {
             log(
                 'LISTENER.FOLLOW READY'
@@ -1224,19 +1055,17 @@
         }
     }
 
-    if (
-        window.__KP_UI_1511__
-    ) {
+    if (window.__KP_UI_1512__) {
         console.log(
             '[KP UI v' +
-                VERSION +
-                '] ALREADY INSTALLED'
+            VERSION +
+            '] ALREADY INSTALLED'
         );
 
         return;
     }
 
-    window.__KP_UI_1511__ = true;
+    window.__KP_UI_1512__ = true;
 
     try {
         init();
@@ -1244,11 +1073,11 @@
         error(
             'INIT FATAL:',
             e &&
-                (
-                    e.stack ||
-                    e.message ||
-                    e
-                )
+            (
+                e.stack ||
+                e.message ||
+                e
+            )
         );
     }
 })();
