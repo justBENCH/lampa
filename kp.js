@@ -1,11 +1,11 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.6.3';
+    var VERSION = '1.6.4';
     var KP_SOURCE_URL = 'https://nb557.github.io/plugins/kp_source.js';
     var loading = false;
     var mounted = false;
-    var nativeRecommendationsRoot = null;
+    var nativeRecommendationsAnchor = null;
     var pendingResults = null;
 
     function log() {
@@ -215,11 +215,10 @@
         return line;
     }
 
-    function mount(root, items) {
+    function mount(anchor, items) {
         if (mounted) return;
 
-        var anchor = insertionAnchor(root);
-        if (!anchor.length) {
+        if (!anchor || !anchor.length || !anchor[0]) {
             fail('NATIVE RECOMMENDATIONS NOT FOUND');
             return;
         }
@@ -246,9 +245,9 @@
     }
 
     function maybeMount() {
-        if (!nativeRecommendationsRoot || !pendingResults || mounted) return;
+        if (!nativeRecommendationsAnchor || !pendingResults || mounted) return;
 
-        mount(nativeRecommendationsRoot, pendingResults);
+        mount(nativeRecommendationsAnchor, pendingResults);
     }
 
     function start(event) {
@@ -295,7 +294,12 @@
         // waiting for it in the DOM after `complite` can never succeed.
         if (event.type === 'build' && event.name === 'cards' &&
             event.data && String(event.data.title || '').trim().toLowerCase() === 'рекомендации') {
-            nativeRecommendationsRoot = event.body;
+            // `item` is the line Lampa has just appended.  Using it directly
+            // avoids a race where the event body has not exposed the new line
+            // to a root-wide selector yet.
+            nativeRecommendationsAnchor = event.item && typeof event.item.render === 'function'
+                ? event.item.render()
+                : insertionAnchor(event.body);
             log('NATIVE RECOMMENDATIONS BUILT');
             maybeMount();
             return;
@@ -304,7 +308,7 @@
         if (event.type !== 'complite') return;
         mounted = false;
         loading = false;
-        nativeRecommendationsRoot = null;
+        nativeRecommendationsAnchor = null;
         pendingResults = null;
         start(event);
     }
