@@ -1,61 +1,33 @@
-```javascript
-/* Online Mod Direct Play + Kinopoisk Recommendations v1.2.0
- *
- * Install alongside:
- * https://nb557.github.io/plugins/online_mod.js
- *
- * Optional:
- * https://nb557.github.io/plugins/kp_source.js
- *
- * Features:
- * - Opens Online Mod directly from the source button
- * - Moves Trailer after Play
- * - Adds Kinopoisk recommendations to movie/series cards
- * - Uses kp_source.js when installed
- * - Uses Kinopoisk API fallback when kp_source.js is absent
- */
+/* Online Mod Direct Play + Kinopoisk Recommendations v1.2.0 */
 (function () {
     'use strict';
 
-    var CACHE_TIME = 1000 * 60 * 60;
-    var CACHE_SIZE = 100;
+    var Lampa = window.Lampa;
 
-    var kpCache = {};
-    var kpRequest = null;
+    if (!Lampa) return;
+
+    var installed = false;
+
+    var CACHE_TIME = 60 * 60 * 1000;
+    var cache = {};
 
     var KP_API = 'https://kinopoiskapiunofficial.tech/';
     var KP_PROXY = 'https://cors.kp556.workers.dev:8443/';
     var KP_KEY = '2a4a0808-81a3-40ae-b0d3-e11335ede616';
 
     /*
-     * ---------------------------------------------------------
-     * Helpers
-     * ---------------------------------------------------------
+     * =========================================================
+     * CACHE
+     * =========================================================
      */
 
-    function getLampa() {
-        return window.Lampa;
-    }
-
-    function hasKPSource() {
-        var Lampa = getLampa();
-
-        return !!(
-            window.kp_source_plugin &&
-            Lampa &&
-            Lampa.Api &&
-            Lampa.Api.sources &&
-            Lampa.Api.sources.KP
-        );
-    }
-
     function cacheGet(key) {
-        var item = kpCache[key];
+        var item = cache[key];
 
         if (!item) return null;
 
-        if (Date.now() - item.timestamp > CACHE_TIME) {
-            delete kpCache[key];
+        if (Date.now() - item.time > CACHE_TIME) {
+            delete cache[key];
             return null;
         }
 
@@ -63,210 +35,232 @@
     }
 
     function cacheSet(key, value) {
-        var keys = Object.keys(kpCache);
-
-        if (keys.length >= CACHE_SIZE) {
-            var oldestKey = keys[0];
-            var oldestTime = kpCache[oldestKey].timestamp;
-
-            keys.forEach(function (key) {
-                if (kpCache[key].timestamp < oldestTime) {
-                    oldestTime = kpCache[key].timestamp;
-                    oldestKey = key;
-                }
-            });
-
-            delete kpCache[oldestKey];
-        }
-
-        kpCache[key] = {
-            timestamp: Date.now(),
+        cache[key] = {
+            time: Date.now(),
             value: value
         };
     }
 
-    function cleanTitle(title) {
-        return String(title || '')
-            .replace(/[\s.,:;’'`!?]+/g, ' ')
-            .trim();
-    }
+    /*
+     * =========================================================
+     * CARD HELPERS
+     * =========================================================
+     */
 
-    function normalizeTitle(title) {
-        return cleanTitle(title)
-            .toLowerCase()
-            .replace(/ё/g, 'е')
-            .replace(/[\-\u2010-\u2015\u2E3A\u2E3B\uFE58\uFE63\uFF0D]+/g, '-');
-    }
+    function getTitle(card) {
+        if (!card) return '';
 
-    function titlesMatch(a, b) {
-        a = normalizeTitle(a);
-        b = normalizeTitle(b);
-
-        if (!a || !b) return false;
-
-        return a === b ||
-            a.indexOf(b) !== -1 ||
-            b.indexOf(a) !== -1;
+        return (
+            card.title ||
+            card.name ||
+            card.original_title ||
+            card.original_name ||
+            ''
+        );
     }
 
     function getYear(card) {
         if (!card) return '';
 
-        if (card.release_date) {
-            return String(card.release_date).substring(0, 4);
-        }
+        var date =
+            card.release_date ||
+            card.first_air_date ||
+            card.year ||
+            '';
 
-        if (card.first_air_date) {
-            return String(card.first_air_date).substring(0, 4);
-        }
-
-        if (card.year) {
-            return String(card.year).substring(0, 4);
-        }
-
-        return '';
+        return String(date).substring(0, 4);
     }
 
-    function getTitle(card) {
-        if (!card) return '';
-
-        return card.title ||
-            card.name ||
-            card.original_title ||
-            card.original_name ||
-            '';
+    function normalizeTitle(title) {
+        return String(title || '')
+            .toLowerCase()
+            .replace(/ё/g, 'е')
+            .replace(/[\s.,:;!?'"`’]+/g, ' ')
+            .replace(/[\-‐-‒–—―]+/g, '-')
+            .trim();
     }
 
-    function convertKPElement(elem) {
-        if (!elem) return null;
+    function titleMatch(a, b) {
+        a = normalizeTitle(a);
+        b = normalizeTitle(b);
 
-        var Lampa = getLampa();
+        if (!a || !b) return false;
 
-        var type =
-            !elem.type ||
-            elem.type === 'FILM' ||
-            elem.type === 'VIDEO'
-                ? 'movie'
-                : 'tv';
-
-        var id = elem.kinopoiskId || elem.filmId || 0;
-
-        if (!id) return null;
-
-        var title =
-            elem.nameRu ||
-            elem.nameEn ||
-            elem.nameOriginal ||
-            '';
-
-        var originalTitle =
-            elem.nameOriginal ||
-            elem.nameEn ||
-            elem.nameRu ||
-            '';
-
-        var rating =
-            Number(elem.rating) ||
-            Number(elem.ratingKinopoisk) ||
-            0;
-
-        var result = {
-            source: 'KP',
-            type: type,
-            adult: false,
-
-            id: 'KP_' + id,
-
-            title: title,
-            original_title: originalTitle,
-
-            overview:
-                elem.description ||
-                elem.shortDescription ||
-                '',
-
-            img:
-                elem.posterUrlPreview ||
-                elem.posterUrl ||
-                '',
-
-            background_image:
-                elem.coverUrl ||
-                elem.posterUrl ||
-                elem.posterUrlPreview ||
-                '',
-
-            genres: [],
-            production_companies: [],
-            production_countries: [],
-
-            vote_average: rating,
-            vote_count:
-                elem.ratingVoteCount ||
-                elem.ratingKinopoiskVoteCount ||
-                0,
-
-            kinopoisk_id: id,
-            kp_rating: rating,
-
-            imdb_id: elem.imdbId || '',
-            imdb_rating: elem.ratingImdb || 0
-        };
-
-        if (elem.genres) {
-            result.genres = elem.genres.map(function (genre) {
-                return {
-                    id: 0,
-                    name: genre.genre || '',
-                    url: ''
-                };
-            });
-        }
-
-        if (elem.countries) {
-            result.production_countries =
-                elem.countries.map(function (country) {
-                    return {
-                        name: country.country || ''
-                    };
-                });
-        }
-
-        if (type === 'tv') {
-            result.name = title;
-            result.original_name = originalTitle;
-            result.first_air_date =
-                elem.startYear ||
-                elem.year ||
-                '';
-        } else {
-            result.release_date =
-                elem.year ||
-                '';
-        }
-
-        /*
-         * We deliberately keep this lightweight.
-         * The recommendation cards don't need seasons/persons/etc.
-         */
-
-        return result;
+        return (
+            a === b ||
+            a.indexOf(b) !== -1 ||
+            b.indexOf(a) !== -1
+        );
     }
 
     /*
-     * ---------------------------------------------------------
-     * Direct API fallback
-     * ---------------------------------------------------------
+     * =========================================================
+     * CHECK KP SOURCE
+     * =========================================================
      */
 
-    function kpRequestApi(method, callback, error) {
-        var Lampa = getLampa();
+    function getKPSource() {
+        if (
+            window.kp_source_plugin &&
+            Lampa.Api &&
+            Lampa.Api.sources &&
+            Lampa.Api.sources.KP
+        ) {
+            return Lampa.Api.sources.KP;
+        }
 
-        if (!Lampa || !Lampa.Reguest) {
-            if (error) error();
+        return null;
+    }
+
+    /*
+     * =========================================================
+     * KP SOURCE SEARCH
+     * =========================================================
+     *
+     * Реальный kp_source использует:
+     *
+     * KP.discovery().search(...)
+     *
+     */
+
+    function searchUsingKPSource(card, callback) {
+        var KP = getKPSource();
+
+        if (!KP || typeof KP.discovery !== 'function') {
+            callback(null);
             return;
         }
 
+        var discovery;
+
+        try {
+            discovery = KP.discovery();
+        } catch (e) {
+            callback(null);
+            return;
+        }
+
+        if (
+            !discovery ||
+            typeof discovery.search !== 'function'
+        ) {
+            callback(null);
+            return;
+        }
+
+        var title = getTitle(card);
+
+        discovery.search(
+            {
+                query: encodeURIComponent(title),
+                page: 1
+            },
+            function (data) {
+                var results = [];
+
+                /*
+                 * discovery.search() у kp_source
+                 * возвращает массив блоков.
+                 */
+
+                if (Array.isArray(data)) {
+                    data.forEach(function (part) {
+                        if (
+                            part &&
+                            Array.isArray(part.results)
+                        ) {
+                            results = results.concat(
+                                part.results
+                            );
+                        }
+                    });
+                }
+
+                if (!results.length) {
+                    callback(null);
+                    return;
+                }
+
+                var year = getYear(card);
+                var best = null;
+
+                /*
+                 * Сначала название + год.
+                 */
+
+                for (var i = 0; i < results.length; i++) {
+                    var item = results[i];
+
+                    if (
+                        titleMatch(
+                            getTitle(item),
+                            title
+                        ) &&
+                        (
+                            !year ||
+                            !getYear(item) ||
+                            getYear(item) === year
+                        )
+                    ) {
+                        best = item;
+                        break;
+                    }
+                }
+
+                /*
+                 * Потом только название.
+                 */
+
+                if (!best) {
+                    for (
+                        var j = 0;
+                        j < results.length;
+                        j++
+                    ) {
+                        if (
+                            titleMatch(
+                                getTitle(results[j]),
+                                title
+                            )
+                        ) {
+                            best = results[j];
+                            break;
+                        }
+                    }
+                }
+
+                /*
+                 * Если ничего идеально не нашли —
+                 * берём первый результат.
+                 */
+
+                if (!best) {
+                    best = results[0];
+                }
+
+                if (
+                    !best ||
+                    !best.kinopoisk_id
+                ) {
+                    callback(null);
+                    return;
+                }
+
+                callback(best);
+            },
+            function () {
+                callback(null);
+            }
+        );
+    }
+
+    /*
+     * =========================================================
+     * FALLBACK API
+     * =========================================================
+     */
+
+    function kpRequest(method, success, error) {
         var network = new Lampa.Reguest();
 
         var url = KP_API + method;
@@ -275,24 +269,19 @@
 
         network.silent(
             url,
-            function (json) {
-                callback(json);
-            },
+            success,
             function (a, c) {
                 /*
-                 * If the direct request fails, try proxy.
+                 * Прямой запрос не прошёл —
+                 * пробуем proxy.
                  */
 
                 network.timeout(15000);
 
                 network.silent(
                     KP_PROXY + url,
-                    function (json) {
-                        callback(json);
-                    },
-                    function () {
-                        if (error) error(a, c);
-                    },
+                    success,
+                    error,
                     false,
                     {
                         headers: {
@@ -310,7 +299,7 @@
         );
     }
 
-    function kpSearchFallback(card, callback) {
+    function searchFallback(card, callback) {
         var title = getTitle(card);
 
         if (!title) {
@@ -318,18 +307,16 @@
             return;
         }
 
-        var year = getYear(card);
-
-        var query =
+        var url =
             'api/v2.1/films/search-by-keyword' +
             '?keyword=' +
-            encodeURIComponent(cleanTitle(title)) +
+            encodeURIComponent(title) +
             '&page=1';
 
-        kpRequestApi(
-            query,
+        kpRequest(
+            url,
             function (json) {
-                var items =
+                var results =
                     json &&
                     (
                         json.films ||
@@ -337,19 +324,24 @@
                         []
                     );
 
-                if (!items.length) {
+                if (!results.length) {
                     callback(null);
                     return;
                 }
 
+                var year = getYear(card);
                 var best = null;
 
                 /*
-                 * First try exact title + year.
+                 * Название + год
                  */
 
-                for (var i = 0; i < items.length; i++) {
-                    var item = items[i];
+                for (
+                    var i = 0;
+                    i < results.length;
+                    i++
+                ) {
+                    var item = results[i];
 
                     var itemTitle =
                         item.nameRu ||
@@ -357,11 +349,15 @@
                         item.nameOriginal ||
                         '';
 
-                    var itemYear = String(item.year || '');
-
                     if (
-                        titlesMatch(itemTitle, title) &&
-                        (!year || itemYear.indexOf(year) === 0)
+                        titleMatch(
+                            itemTitle,
+                            title
+                        ) &&
+                        (
+                            !year ||
+                            String(item.year || '') === year
+                        )
                     ) {
                         best = item;
                         break;
@@ -369,12 +365,17 @@
                 }
 
                 /*
-                 * Then title-only.
+                 * Только название
                  */
 
                 if (!best) {
-                    for (var j = 0; j < items.length; j++) {
-                        var candidate = items[j];
+                    for (
+                        var j = 0;
+                        j < results.length;
+                        j++
+                    ) {
+                        var candidate =
+                            results[j];
 
                         var candidateTitle =
                             candidate.nameRu ||
@@ -382,34 +383,37 @@
                             candidate.nameOriginal ||
                             '';
 
-                        if (titlesMatch(candidateTitle, title)) {
+                        if (
+                            titleMatch(
+                                candidateTitle,
+                                title
+                            )
+                        ) {
                             best = candidate;
                             break;
                         }
                     }
                 }
 
-                /*
-                 * Finally use first result.
-                 */
-
-                if (!best) best = items[0];
+                if (!best) {
+                    best = results[0];
+                }
 
                 if (!best) {
                     callback(null);
                     return;
                 }
 
-                var kpId =
+                var id =
                     best.kinopoiskId ||
                     best.filmId;
 
-                if (!kpId) {
+                if (!id) {
                     callback(null);
                     return;
                 }
 
-                callback(kpId);
+                callback(id);
             },
             function () {
                 callback(null);
@@ -417,13 +421,20 @@
         );
     }
 
-    function getSimilarFallback(kpId, callback) {
-        if (!kpId) {
+    /*
+     * =========================================================
+     * GET SIMILARS
+     * =========================================================
+     */
+
+    function getSimilarById(id, callback) {
+        if (!id) {
             callback([]);
             return;
         }
 
-        var cacheKey = 'similar_' + kpId;
+        var cacheKey = 'kp_similar_' + id;
+
         var cached = cacheGet(cacheKey);
 
         if (cached) {
@@ -431,8 +442,8 @@
             return;
         }
 
-        kpRequestApi(
-            'api/v2.2/films/' + kpId + '/similars',
+        kpRequest(
+            'api/v2.2/films/' + id + '/similars',
             function (json) {
                 var items =
                     json &&
@@ -443,7 +454,9 @@
                     );
 
                 var results = items
-                    .map(convertKPElement)
+                    .map(function (item) {
+                        return convertKPCard(item);
+                    })
                     .filter(function (item) {
                         return !!item;
                     })
@@ -460,157 +473,111 @@
     }
 
     /*
-     * ---------------------------------------------------------
-     * KP source integration
-     * ---------------------------------------------------------
+     * =========================================================
+     * CONVERT KP CARD
+     * =========================================================
      */
 
-    function getSimilarFromKPSource(card, callback) {
-        var Lampa = getLampa();
+    function convertKPCard(item) {
+        if (!item) return null;
 
-        if (!hasKPSource()) {
-            callback([]);
-            return;
+        var id =
+            item.kinopoiskId ||
+            item.filmId;
+
+        if (!id) return null;
+
+        var type =
+            !item.type ||
+            item.type === 'FILM' ||
+            item.type === 'VIDEO'
+                ? 'movie'
+                : 'tv';
+
+        var title =
+            item.nameRu ||
+            item.nameEn ||
+            item.nameOriginal ||
+            '';
+
+        var original =
+            item.nameOriginal ||
+            item.nameEn ||
+            item.nameRu ||
+            '';
+
+        var rating =
+            Number(item.ratingKinopoisk) ||
+            Number(item.rating) ||
+            0;
+
+        var card = {
+            source: 'KP',
+
+            type: type,
+
+            id: 'KP_' + id,
+
+            title: title,
+            original_title: original,
+
+            name: title,
+            original_name: original,
+
+            overview:
+                item.description ||
+                item.shortDescription ||
+                '',
+
+            img:
+                item.posterUrlPreview ||
+                item.posterUrl ||
+                '',
+
+            background_image:
+                item.coverUrl ||
+                item.posterUrl ||
+                '',
+
+            vote_average: rating,
+
+            vote_count:
+                item.ratingVoteCount ||
+                item.ratingKinopoiskVoteCount ||
+                0,
+
+            kp_rating: rating,
+
+            kinopoisk_id: id,
+
+            imdb_id:
+                item.imdbId ||
+                '',
+
+            imdb_rating:
+                item.ratingImdb ||
+                0
+        };
+
+        if (type === 'tv') {
+            card.first_air_date =
+                item.startYear ||
+                item.year ||
+                '';
+        } else {
+            card.release_date =
+                item.year ||
+                '';
         }
 
-        var KP = Lampa.Api.sources.KP;
-
-        /*
-         * If current card is already a KP card,
-         * we can use its ID directly.
-         */
-
-        if (card.kinopoisk_id) {
-            KP.full(
-                {
-                    card: card
-                },
-                function (json) {
-                    var results =
-                        json &&
-                        json.simular &&
-                        json.simular.results;
-
-                    callback(results || []);
-                },
-                function () {
-                    callback([]);
-                }
-            );
-
-            return;
-        }
-
-        /*
-         * Current card is TMDB/CUB/etc.
-         * Search KP first.
-         */
-
-        KP.search(
-            {
-                query: encodeURIComponent(getTitle(card)),
-                page: 1
-            },
-            function (groups) {
-                var results = [];
-
-                if (Array.isArray(groups)) {
-                    groups.forEach(function (group) {
-                        if (
-                            group &&
-                            Array.isArray(group.results)
-                        ) {
-                            results = results.concat(group.results);
-                        }
-                    });
-                }
-
-                if (!results.length) {
-                    callback([]);
-                    return;
-                }
-
-                var title = getTitle(card);
-                var year = getYear(card);
-
-                var best = null;
-
-                /*
-                 * Exact title + year.
-                 */
-
-                for (var i = 0; i < results.length; i++) {
-                    var item = results[i];
-
-                    var itemYear =
-                        getYear(item);
-
-                    if (
-                        titlesMatch(
-                            getTitle(item),
-                            title
-                        ) &&
-                        (
-                            !year ||
-                            !itemYear ||
-                            itemYear === year
-                        )
-                    ) {
-                        best = item;
-                        break;
-                    }
-                }
-
-                /*
-                 * Exact title.
-                 */
-
-                if (!best) {
-                    for (var j = 0; j < results.length; j++) {
-                        if (
-                            titlesMatch(
-                                getTitle(results[j]),
-                                title
-                            )
-                        ) {
-                            best = results[j];
-                            break;
-                        }
-                    }
-                }
-
-                if (!best) best = results[0];
-
-                if (
-                    !best ||
-                    !best.kinopoisk_id
-                ) {
-                    callback([]);
-                    return;
-                }
-
-                KP.full(
-                    {
-                        card: best
-                    },
-                    function (json) {
-                        var similar =
-                            json &&
-                            json.simular &&
-                            json.simular.results;
-
-                        callback(similar || []);
-                    },
-                    function () {
-                        callback([]);
-                    }
-                );
-            },
-            function () {
-                callback([]);
-            }
-        );
+        return card;
     }
+
+    /*
+     * =========================================================
+     * MAIN RECOMMENDATIONS
+     * =========================================================
+     */
 
     function getRecommendations(card, callback) {
         if (!card) {
@@ -621,7 +588,13 @@
         var title = getTitle(card);
         var year = getYear(card);
 
+        if (!title) {
+            callback([]);
+            return;
+        }
+
         var key =
+            'kp_rec_' +
             normalizeTitle(title) +
             '_' +
             year;
@@ -634,18 +607,62 @@
         }
 
         /*
-         * Use existing kp_source whenever available.
+         * -----------------------------------------------------
+         * 1. kp_source установлен
+         * -----------------------------------------------------
          */
 
-        if (hasKPSource()) {
-            getSimilarFromKPSource(
+        if (getKPSource()) {
+            searchUsingKPSource(
                 card,
-                function (results) {
-                    results = (results || []).slice(0, 20);
+                function (kpCard) {
+                    if (
+                        !kpCard ||
+                        !kpCard.kinopoisk_id
+                    ) {
+                        callback([]);
+                        return;
+                    }
 
-                    cacheSet(key, results);
+                    var KP = getKPSource();
 
-                    callback(results);
+                    /*
+                     * Используем РЕАЛЬНЫЙ full()
+                     * из kp_source.
+                     *
+                     * Он сам получает:
+                     * - film
+                     * - staff
+                     * - sequels
+                     * - similars
+                     */
+
+                    KP.full(
+                        {
+                            card: kpCard
+                        },
+                        function (json) {
+                            var results =
+                                json &&
+                                json.simular &&
+                                json.simular.results;
+
+                            results =
+                                Array.isArray(results)
+                                    ? results.slice(0, 20)
+                                    : [];
+
+                            cacheSet(
+                                key,
+                                results
+                            );
+
+                            callback(results);
+                        },
+                        function () {
+                            callback([]);
+                        }
+                    );
                 }
             );
 
@@ -653,10 +670,12 @@
         }
 
         /*
-         * No kp_source -> own fallback.
+         * -----------------------------------------------------
+         * 2. kp_source отсутствует
+         * -----------------------------------------------------
          */
 
-        kpSearchFallback(
+        searchFallback(
             card,
             function (kpId) {
                 if (!kpId) {
@@ -664,12 +683,13 @@
                     return;
                 }
 
-                getSimilarFallback(
+                getSimilarById(
                     kpId,
                     function (results) {
-                        results = (results || []).slice(0, 20);
-
-                        cacheSet(key, results);
+                        cacheSet(
+                            key,
+                            results
+                        );
 
                         callback(results);
                     }
@@ -679,291 +699,270 @@
     }
 
     /*
-     * ---------------------------------------------------------
-     * Add recommendations to current full card
-     * ---------------------------------------------------------
+     * =========================================================
+     * OPEN KP CARD
+     * =========================================================
      */
 
-    function addRecommendations(event) {
-        var Lampa = getLampa();
+    function openCard(card) {
+        if (!card) return;
 
-        if (!Lampa || !event || event.type !== 'complite') {
+        /*
+         * Сначала пытаемся открыть стандартным способом.
+         */
+
+        try {
+            Lampa.Activity.push({
+                component: 'full',
+                card: card
+            });
+
             return;
-        }
+        } catch (e) {}
 
+        /*
+         * Fallback.
+         */
+
+        try {
+            Lampa.Activity.push({
+                component: 'full',
+                method: 'full',
+                card: card,
+                id: card.id
+            });
+        } catch (e2) {}
+    }
+
+    /*
+     * =========================================================
+     * RENDER RECOMMENDATIONS
+     * =========================================================
+     */
+
+    function renderRecommendations(event, card) {
         if (
+            !event ||
             !event.object ||
-            !event.object.activity ||
-            typeof event.object.activity.render !== 'function'
+            !event.object.activity
         ) {
             return;
         }
 
-        var activity = event.object.activity;
+        var activity =
+            event.object.activity;
 
-        var card =
-            event.data ||
-            event.object.card ||
-            event.object.data ||
-            event.object;
-
-        /*
-         * Try common locations used by Lampa.
-         */
-
-        if (!card || typeof card !== 'object') {
+        if (
+            typeof activity.render !==
+            'function'
+        ) {
             return;
         }
 
         var root = activity.render();
 
-        if (!root || typeof root.find !== 'function') {
+        if (
+            !root ||
+            typeof root.find !== 'function'
+        ) {
             return;
         }
 
         /*
-         * Don't add the block twice.
+         * Не создавать второй раз.
          */
 
-        if (root.find('.helper-kp-recommendations').length) {
-            return;
-        }
-
-        /*
-         * We need the actual movie card.
-         * In most Lampa versions it is available here.
-         */
-
-        var possibleCard =
-            card.card ||
-            card.movie ||
-            card;
-
-        if (!getTitle(possibleCard)) {
+        if (
+            root.find(
+                '.helper-kp-recommendations'
+            ).length
+        ) {
             return;
         }
 
         getRecommendations(
-            possibleCard,
+            card,
             function (items) {
                 if (!items || !items.length) {
                     return;
                 }
 
-                /*
-                 * At this point recommendations are loaded.
-                 *
-                 * Instead of modifying Lampa's internal Status,
-                 * create a standard Lampa row.
-                 */
+                var body =
+                    root.find(
+                        '.full-start-new__body'
+                    );
 
-                var container =
-                    root.find('.full-start__body');
-
-                if (!container.length) {
-                    container =
-                        root.find('.full-start-new__body');
+                if (!body.length) {
+                    body =
+                        root.find(
+                            '.full-start__body'
+                        );
                 }
 
-                if (!container.length) {
+                if (!body.length) {
                     return;
                 }
 
-                var section =
-                    $('<div class="helper-kp-recommendations"></div>');
+                var section = $(
+                    '<div class="helper-kp-recommendations"></div>'
+                );
 
-                var title =
-                    $('<div class="helper-kp-recommendations__title">Кинопоиск</div>');
+                var heading = $(
+                    '<div class="helper-kp-recommendations__title selector">Кинопоиск</div>'
+                );
 
-                var row =
-                    $('<div class="helper-kp-recommendations__row"></div>');
+                var row = $(
+                    '<div class="helper-kp-recommendations__row"></div>'
+                );
 
-                items.forEach(function (item) {
-                    if (!item || !item.id) return;
+                items.forEach(
+                    function (item) {
+                        var element = $(
+                            '<div class="helper-kp-card selector"></div>'
+                        );
 
-                    var cardEl =
-                        $('<div class="helper-kp-recommendations__card"></div>');
+                        var image = $(
+                            '<div class="helper-kp-card__image"></div>'
+                        );
 
-                    var image =
-                        $('<img class="helper-kp-recommendations__image">');
+                        image.css(
+                            'background-image',
+                            'url("' +
+                            (
+                                item.img ||
+                                ''
+                            ) +
+                            '")'
+                        );
 
-                    image.attr(
-                        'src',
-                        item.img || ''
-                    );
+                        var name = $(
+                            '<div class="helper-kp-card__name"></div>'
+                        );
 
-                    var name =
-                        $('<div class="helper-kp-recommendations__name"></div>');
+                        name.text(
+                            item.title ||
+                            item.name ||
+                            ''
+                        );
 
-                    name.text(
-                        item.title ||
-                        item.original_title ||
-                        ''
-                    );
+                        element.append(image);
+                        element.append(name);
 
-                    cardEl.append(image);
-                    cardEl.append(name);
-
-                    cardEl.on(
-                        'hover:focus',
-                        function () {
-                            row
-                                .find('.helper-kp-recommendations__card')
-                                .removeClass('focus');
-
-                            cardEl.addClass('focus');
-                        }
-                    );
-
-                    cardEl.on(
-                        'click',
-                        function () {
-                            /*
-                             * Open recommendation using normal Lampa
-                             * Activity navigation.
-                             */
-
-                            try {
-                                Lampa.Activity.push({
-                                    component: 'full',
-                                    id: item.id,
-                                    method: 'full',
-                                    card: item
-                                });
-                            } catch (e) {
-                                try {
-                                    Lampa.Activity.push({
-                                        component: 'full',
-                                        card: item
-                                    });
-                                } catch (e2) {}
+                        element.on(
+                            'hover:enter',
+                            function () {
+                                openCard(item);
                             }
-                        }
-                    );
+                        );
 
-                    row.append(cardEl);
-                });
+                        element.on(
+                            'click',
+                            function () {
+                                openCard(item);
+                            }
+                        );
 
-                section.append(title);
+                        row.append(element);
+                    }
+                );
+
+                section.append(heading);
                 section.append(row);
 
-                container.append(section);
-
                 /*
-                 * Make first recommendation focusable.
+                 * Добавляем в конец карточки.
                  */
 
-                var first =
-                    row.find(
-                        '.helper-kp-recommendations__card'
-                    ).first();
-
-                if (first.length) {
-                    first.addClass('focus');
-                }
+                body.append(section);
             }
         );
     }
 
     /*
-     * ---------------------------------------------------------
-     * Styles
-     * ---------------------------------------------------------
+     * =========================================================
+     * STYLES
+     * =========================================================
      */
 
     function addStyles() {
-        if ($('#helper-kp-recommendations-style').length) {
+        if (
+            $('#helper-kp-style').length
+        ) {
             return;
         }
 
-        var style = `
-            <style id="helper-kp-recommendations-style">
+        $('head').append(
+            '<style id="helper-kp-style">' +
 
-                .helper-kp-recommendations {
-                    width: 100%;
-                    margin-top: 2em;
-                    padding-bottom: 2em;
-                }
+            '.helper-kp-recommendations{' +
+                'width:100%;' +
+                'margin-top:2em;' +
+                'padding-bottom:2em;' +
+            '}' +
 
-                .helper-kp-recommendations__title {
-                    font-size: 1.4em;
-                    font-weight: 500;
-                    margin-bottom: 0.8em;
-                }
+            '.helper-kp-recommendations__title{' +
+                'font-size:1.35em;' +
+                'font-weight:500;' +
+                'margin-bottom:.8em;' +
+            '}' +
 
-                .helper-kp-recommendations__row {
-                    display: flex;
-                    gap: 1em;
-                    overflow: hidden;
-                }
+            '.helper-kp-recommendations__row{' +
+                'display:flex;' +
+                'gap:1em;' +
+                'overflow:hidden;' +
+            '}' +
 
-                .helper-kp-recommendations__card {
-                    flex: 0 0 9em;
-                    width: 9em;
-                    min-width: 9em;
-                    cursor: pointer;
-                    border-radius: 0.35em;
-                    overflow: hidden;
-                    opacity: .9;
-                    transform: scale(1);
-                    transition: transform .15s ease,
-                                opacity .15s ease;
-                }
+            '.helper-kp-card{' +
+                'width:9em;' +
+                'min-width:9em;' +
+                'border-radius:.35em;' +
+                'overflow:hidden;' +
+                'cursor:pointer;' +
+            '}' +
 
-                .helper-kp-recommendations__card.focus {
-                    opacity: 1;
-                    transform: scale(1.04);
-                }
+            '.helper-kp-card__image{' +
+                'width:9em;' +
+                'height:13em;' +
+                'background-size:cover;' +
+                'background-position:center;' +
+                'background-color:rgba(255,255,255,.05);' +
+            '}' +
 
-                .helper-kp-recommendations__image {
-                    display: block;
-                    width: 100%;
-                    height: 13em;
-                    object-fit: cover;
-                    background: rgba(255,255,255,.05);
-                }
+            '.helper-kp-card__name{' +
+                'font-size:.8em;' +
+                'line-height:1.2;' +
+                'margin-top:.35em;' +
+                'white-space:nowrap;' +
+                'overflow:hidden;' +
+                'text-overflow:ellipsis;' +
+            '}' +
 
-                .helper-kp-recommendations__name {
-                    padding-top: .4em;
-                    font-size: .8em;
-                    line-height: 1.2;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                }
-
-            </style>
-        `;
-
-        $('head').append(style);
+            '</style>'
+        );
     }
 
     /*
-     * ---------------------------------------------------------
-     * Existing Direct Play functionality
-     * ---------------------------------------------------------
+     * =========================================================
+     * YOUR EXISTING DIRECT PLAY
+     * =========================================================
      */
 
     function installDirectPlay() {
-        var Lampa = window.Lampa;
+        var original =
+            Lampa.Select &&
+            Lampa.Select.show;
 
         if (
-            !Lampa ||
             !Lampa.Select ||
-            !Lampa.Lang ||
-            !Lampa.Listener ||
-            typeof Lampa.Listener.follow !== 'function'
+            typeof original !==
+                'function'
         ) {
             return false;
         }
 
-        var original = Lampa.Select.show;
-
-        if (typeof original !== 'function') {
-            return false;
-        }
-
-        if (original.onlineModDirectPlay) {
+        if (
+            original.onlineModDirectPlay
+        ) {
             return true;
         }
 
@@ -974,52 +973,79 @@
                     Lampa.Lang.translate(
                         'settings_rest_source'
                     ) &&
-                Array.isArray(options.items) &&
-                typeof options.onSelect === 'function'
+                Array.isArray(
+                    options.items
+                ) &&
+                typeof options.onSelect ===
+                    'function'
             ) {
                 for (
                     var i = 0;
                     i < options.items.length;
                     i++
                 ) {
-                    var item = options.items[i];
+                    var item =
+                        options.items[i];
 
                     if (
                         item &&
                         !item.hide &&
                         item.btn &&
-                        typeof item.btn.is === 'function' &&
+                        typeof item.btn.is ===
+                            'function' &&
                         item.btn.is(
                             '.full-start__button.view--online_mod'
                         ) &&
-                        !item.btn.is('.hide')
+                        !item.btn.is(
+                            '.hide'
+                        )
                     ) {
-                        return options.onSelect(item);
+                        return options.onSelect(
+                            item
+                        );
                     }
                 }
             }
 
-            return original.apply(this, arguments);
+            return original.apply(
+                this,
+                arguments
+            );
         }
 
-        show.onlineModDirectPlay = true;
+        show.onlineModDirectPlay =
+            true;
 
         Lampa.Select.show = show;
 
-        /*
-         * Move Trailer after Play.
-         */
+        return true;
+    }
+
+    /*
+     * =========================================================
+     * TRAILER POSITION
+     * =========================================================
+     */
+
+    function installTrailerMove() {
+        if (
+            window.helperTrailerMoveInstalled
+        ) {
+            return;
+        }
+
+        window.helperTrailerMoveInstalled =
+            true;
 
         Lampa.Listener.follow(
             'full',
             function (event) {
                 if (
                     !event ||
-                    event.type !== 'complite' ||
+                    event.type !==
+                        'complite' ||
                     !event.object ||
-                    !event.object.activity ||
-                    typeof event.object.activity.render !==
-                        'function'
+                    !event.object.activity
                 ) {
                     return;
                 }
@@ -1029,7 +1055,8 @@
 
                 if (
                     !root ||
-                    typeof root.find !== 'function'
+                    typeof root.find !==
+                        'function'
                 ) {
                     return;
                 }
@@ -1053,7 +1080,9 @@
                     return;
                 }
 
-                trailers.insertAfter(play);
+                trailers.insertAfter(
+                    play
+                );
 
                 trailers.on(
                     'hover:focus',
@@ -1070,20 +1099,97 @@
                 );
             }
         );
-
-        return true;
     }
 
     /*
-     * ---------------------------------------------------------
-     * Installation
-     * ---------------------------------------------------------
+     * =========================================================
+     * FULL LISTENER
+     * =========================================================
+     */
+
+    function installFullListener() {
+        if (
+            window.helperKPFullInstalled
+        ) {
+            return;
+        }
+
+        window.helperKPFullInstalled =
+            true;
+
+        Lampa.Listener.follow(
+            'full',
+            function (event) {
+                if (
+                    !event ||
+                    event.type !==
+                        'complite'
+                ) {
+                    return;
+                }
+
+                /*
+                 * В разных версиях Lampa карточка
+                 * может находиться в разных местах.
+                 */
+
+                var card =
+                    event.data ||
+                    (
+                        event.object &&
+                        event.object.card
+                    ) ||
+                    (
+                        event.object &&
+                        event.object.data
+                    );
+
+                if (
+                    !card ||
+                    !getTitle(card)
+                ) {
+                    return;
+                }
+
+                /*
+                 * Небольшая задержка:
+                 * даём штатной карточке закончить
+                 * построение DOM.
+                 */
+
+                setTimeout(
+                    function () {
+                        renderRecommendations(
+                            event,
+                            card
+                        );
+                    },
+                    300
+                );
+            }
+        );
+    }
+
+    /*
+     * =========================================================
+     * INSTALL
+     * =========================================================
      */
 
     function install() {
-        var Lampa = window.Lampa;
+        if (installed) {
+            return true;
+        }
 
-        if (!Lampa) {
+        Lampa =
+            window.Lampa;
+
+        if (
+            !Lampa ||
+            !Lampa.Listener ||
+            typeof Lampa.Listener.follow !==
+                'function'
+        ) {
             return false;
         }
 
@@ -1091,62 +1197,29 @@
 
         installDirectPlay();
 
-        /*
-         * Wait until Lampa's full activity is available.
-         */
+        installTrailerMove();
 
-        if (
-            Lampa.Listener &&
-            typeof Lampa.Listener.follow === 'function'
-        ) {
-            if (!window.helperKpRecommendationsInstalled) {
-                window.helperKpRecommendationsInstalled = true;
+        installFullListener();
 
-                Lampa.Listener.follow(
-                    'full',
-                    function (event) {
-                        /*
-                         * Give the normal Lampa card a moment
-                         * to finish rendering.
-                         */
-
-                        if (
-                            event &&
-                            event.type === 'complite'
-                        ) {
-                            setTimeout(
-                                function () {
-                                    addRecommendations(event);
-                                },
-                                250
-                            );
-                        }
-                    }
-                );
-            }
-        }
+        installed = true;
 
         return true;
     }
 
-    /*
-     * Lampa may load asynchronously.
-     */
-
     if (!install()) {
         var attempts = 0;
 
-        var timer = setInterval(
-            function () {
-                if (
-                    install() ||
-                    ++attempts >= 120
-                ) {
-                    clearInterval(timer);
-                }
-            },
-            500
-        );
+        var timer =
+            setInterval(
+                function () {
+                    if (
+                        install() ||
+                        ++attempts >= 120
+                    ) {
+                        clearInterval(timer);
+                    }
+                },
+                500
+            );
     }
 })();
-```
