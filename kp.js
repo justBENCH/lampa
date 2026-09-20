@@ -1,5 +1,5 @@
-/* Kinopoisk Similar for Lampa v1.5.2
- * BUILD: 2026-09-20-18-50
+/* Kinopoisk Similar for Lampa v1.5.3
+ * BUILD: 2026-09-20-18-55
  *
  * TMDB detail
  * -> IMDb
@@ -8,14 +8,14 @@
  * -> native kp_source.js
  * -> KP.full()
  * -> simular
- * -> native Lampa Card
+ * -> Lampa cards
  */
 
 (function () {
     'use strict';
 
-    var VERSION = '1.5.2';
-    var BUILD = '2026-09-20-18-50';
+    var VERSION = '1.5.3';
+    var BUILD = '2026-09-20-18-55';
     var PREFIX = '[KP UI v' + VERSION + ']';
 
     console.log(PREFIX + ' VERSION:', VERSION);
@@ -63,7 +63,6 @@
     function loadKPSource() {
         if (isKPReady()) {
             log('KP SOURCE ALREADY READY');
-
             return Promise.resolve(true);
         }
 
@@ -77,12 +76,22 @@
             var script =
                 document.createElement('script');
 
+            script.type =
+                'text/javascript';
+
             script.src =
-                'https://raw.githubusercontent.com/nb557/plugins/master/kp_source.js?v=' +
+                'https://nb557.github.io/plugins/kp_source.js?v=' +
                 Date.now();
 
+            log(
+                'KP SOURCE URL:',
+                script.src
+            );
+
             script.onload = function () {
-                log('KP SOURCE NETWORK LOADED');
+                log(
+                    'KP SOURCE NETWORK LOADED'
+                );
 
                 var attempts = 0;
 
@@ -187,9 +196,7 @@
                                 response
                             );
 
-                            resolve(
-                                response
-                            );
+                            resolve(response);
                         },
                         function (error) {
                             log(
@@ -197,9 +204,7 @@
                                 error
                             );
 
-                            reject(
-                                error
-                            );
+                            reject(error);
                         }
                     );
                 } catch (error) {
@@ -331,11 +336,11 @@
 
     /*
      * =========================================================
-     * NATIVE LAMPA CARD
+     * CARD
      * =========================================================
      */
 
-    function createNativeCard(item) {
+    function createCard(item) {
         var kpId =
             item.kinopoiskId ||
             item.filmId ||
@@ -385,19 +390,16 @@
 
         var data = {
             id: 'KP_' + kpId,
-
             source: 'KP',
-
             kinopoisk_id: kpId,
 
             title: title,
+            name: title,
 
             original_title:
                 item.nameOriginal ||
                 item.nameEn ||
                 title,
-
-            name: title,
 
             original_name:
                 item.nameOriginal ||
@@ -428,7 +430,8 @@
 
         if (
             !Lampa.Maker ||
-            typeof Lampa.Maker.make !== 'function'
+            typeof Lampa.Maker.make !==
+                'function'
         ) {
             log(
                 'ERROR: Lampa.Maker unavailable'
@@ -461,24 +464,18 @@
         }
 
         if (!card) {
-            log(
-                'CARD IS NULL'
-            );
-
             return null;
         }
 
         if (
             typeof card.use ===
-            'function'
+                'function'
         ) {
             card.use({
                 onFocus: function () {
                     log(
                         'CARD FOCUS:',
-                        title,
-                        '| KP:',
-                        kpId
+                        title
                     );
                 },
 
@@ -515,11 +512,7 @@
      * =========================================================
      */
 
-    function clearNativeCards() {
-        nativeCards = [];
-    }
-
-    function buildNativeRow(items) {
+    function buildRow(items) {
         var row =
             document.createElement('div');
 
@@ -537,7 +530,6 @@
                     'Рекомендации Кинопоиска' +
                 '</div>' +
             '</div>' +
-
             '<div class="items-line__body">' +
                 '<div class="scroll scroll--horizontal">' +
                     '<div class="scroll__content">' +
@@ -552,7 +544,7 @@
                 '.mapping--line'
             );
 
-        clearNativeCards();
+        nativeCards = [];
 
         for (
             var i = 0;
@@ -560,7 +552,7 @@
             i++
         ) {
             var card =
-                createNativeCard(
+                createCard(
                     items[i]
                 );
 
@@ -594,14 +586,6 @@
             }
 
             if (
-                !element &&
-                card.html
-            ) {
-                element =
-                    card.html;
-            }
-
-            if (
                 element &&
                 element.jquery
             ) {
@@ -632,7 +616,7 @@
         }
 
         log(
-            'NATIVE CARD COUNT:',
+            'CARD DOM COUNT:',
             body.querySelectorAll(
                 '.card'
             ).length
@@ -643,7 +627,7 @@
 
     /*
      * =========================================================
-     * DOM
+     * INSERT
      * =========================================================
      */
 
@@ -661,57 +645,14 @@
             rows[i].remove();
         }
 
-        clearNativeCards();
-    }
-
-    function getVisibleRows() {
-        var rows =
-            document.querySelectorAll(
-                '.items-line'
-            );
-
-        var result = [];
-
-        for (
-            var i = 0;
-            i < rows.length;
-            i++
-        ) {
-            var row =
-                rows[i];
-
-            if (!row.offsetParent) {
-                continue;
-            }
-
-            var rect =
-                row.getBoundingClientRect();
-
-            if (
-                rect.width > 0 &&
-                rect.height > 0
-            ) {
-                result.push(row);
-            }
-        }
-
-        return result;
-    }
-
-    function getRowTitle(row) {
-        var title =
-            row.querySelector(
-                '.items-line__title'
-            );
-
-        return title
-            ? title.textContent.trim()
-            : '';
+        nativeCards = [];
     }
 
     function findRows() {
         var rows =
-            getVisibleRows();
+            document.querySelectorAll(
+                '.items-line'
+            );
 
         var result = {
             similar: null,
@@ -725,10 +666,19 @@
             i < rows.length;
             i++
         ) {
+            var titleNode =
+                rows[i].querySelector(
+                    '.items-line__title'
+                );
+
+            if (!titleNode) {
+                continue;
+            }
+
             var title =
-                getRowTitle(
-                    rows[i]
-                ).toLowerCase();
+                titleNode.textContent
+                    .trim()
+                    .toLowerCase();
 
             if (
                 title.indexOf(
@@ -787,22 +737,15 @@
             findRows();
 
         log(
-            'DOM CHECK #' +
-            attempt +
-            ':',
-            'similar=' +
-            !!found.similar,
+            'DOM CHECK #' + attempt,
+            'similar=' + !!found.similar,
             'recommendations=' +
-            !!found.recommendations,
-            'actors=' +
-            !!found.actors,
-            'director=' +
-            !!found.director
+                !!found.recommendations,
+            'actors=' + !!found.actors,
+            'director=' + !!found.director
         );
 
-        if (
-            found.similar
-        ) {
+        if (found.similar) {
             found.similar.insertAdjacentElement(
                 'afterend',
                 row
@@ -845,7 +788,7 @@
                 'ROW INSERTED BEFORE Актёры'
             );
         } else if (
-            attempt < 60
+            attempt < 80
         ) {
             setTimeout(
                 function () {
@@ -861,7 +804,7 @@
             return;
         } else {
             log(
-                'DOM ROW TIMEOUT'
+                'DOM INSERT TIMEOUT'
             );
 
             return;
@@ -873,19 +816,10 @@
         );
 
         log(
-            'NATIVE CARD DOM COUNT:',
+            'ROW CARD COUNT:',
             row.querySelectorAll(
                 '.card'
             ).length
-        );
-
-        var rect =
-            row.getBoundingClientRect();
-
-        log(
-            'ROW RECT:',
-            rect.width,
-            rect.height
         );
 
         log(
@@ -896,7 +830,7 @@
 
     /*
      * =========================================================
-     * MAIN
+     * PIPELINE
      * =========================================================
      */
 
@@ -1014,12 +948,6 @@
                         similar
                     );
 
-                    log(
-                        'TOTAL PIPELINE:',
-                        elapsed(start) +
-                        'ms'
-                    );
-
                     if (!similar.length) {
                         log(
                             'NO SIMILARS'
@@ -1029,12 +957,12 @@
                     }
 
                     var row =
-                        buildNativeRow(
+                        buildRow(
                             similar
                         );
 
                     log(
-                        'NATIVE ROW BUILT'
+                        'ROW BUILT'
                     );
 
                     insertRow(
