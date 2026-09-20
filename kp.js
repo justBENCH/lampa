@@ -1,19 +1,13 @@
-/* KP Recommendations for Lampa v1.5.6
+/* KP Recommendations for Lampa v1.5.7
  * 2026-09-20
  *
- * full:complite
- * -> wait native Recommendations
- * -> IMDb
- * -> Wikidata
- * -> KP source
- * -> KP.full()
- * -> native-like DOM cards
+ * Native Lampa Card implementation
  */
 (function () {
     'use strict';
 
-    var VERSION = '1.5.6';
-    var BUILD = '2026-09-20-19-20';
+    var VERSION = '1.5.7';
+    var BUILD = '2026-09-20-19-30';
 
     console.log('[KP UI v' + VERSION + '] VERSION:', VERSION);
     console.log('[KP UI v' + VERSION + '] BUILD:', BUILD);
@@ -59,23 +53,6 @@
             card.imdb ||
             ''
         );
-    }
-
-    function getRoot(event) {
-        if (
-            !event ||
-            !event.object ||
-            !event.object.activity ||
-            typeof event.object.activity.render !== 'function'
-        ) {
-            return null;
-        }
-
-        try {
-            return event.object.activity.render();
-        } catch (e) {
-            return null;
-        }
     }
 
     function findNativeRecommendations(root) {
@@ -150,9 +127,7 @@
                 return;
             }
 
-            if (!root || !root.find) {
-                return;
-            }
+            if (!root || !root.find) return;
 
             var native =
                 findNativeRecommendations(root);
@@ -258,9 +233,7 @@
                             Lampa.Api.sources &&
                             Lampa.Api.sources.KP
                         ) {
-                            clearInterval(
-                                waitTimer
-                            );
+                            clearInterval(waitTimer);
 
                             kpLoaded = true;
 
@@ -272,9 +245,7 @@
                         } else if (
                             ++attempts >= 60
                         ) {
-                            clearInterval(
-                                waitTimer
-                            );
+                            clearInterval(waitTimer);
 
                             error(
                                 'KP SOURCE WAIT TIMEOUT'
@@ -296,9 +267,7 @@
         );
 
         var script =
-            document.createElement(
-                'script'
-            );
+            document.createElement('script');
 
         script.onload = function () {
             log(
@@ -316,9 +285,7 @@
                             Lampa.Api.sources &&
                             Lampa.Api.sources.KP
                         ) {
-                            clearInterval(
-                                timer
-                            );
+                            clearInterval(timer);
 
                             kpLoaded = true;
                             kpLoading = false;
@@ -335,9 +302,7 @@
                         } else if (
                             ++attempts >= 40
                         ) {
-                            clearInterval(
-                                timer
-                            );
+                            clearInterval(timer);
 
                             kpLoading = false;
 
@@ -350,15 +315,14 @@
                 );
         };
 
-        script.onerror =
-            function (e) {
-                kpLoading = false;
+        script.onerror = function (e) {
+            kpLoading = false;
 
-                error(
-                    'KP SOURCE LOAD ERROR:',
-                    e
-                );
-            };
+            error(
+                'KP SOURCE LOAD ERROR:',
+                e
+            );
+        };
 
         script.src =
             KP_SOURCE_URL;
@@ -459,166 +423,229 @@
         );
     }
 
-    function escapeHtml(value) {
-        return String(
-            value == null ? '' : value
-        )
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
+    /*
+     * Получаем реальные модули Card из текущей
+     * версии Lampa.
+     *
+     * В старом примере документации используется
+     * Create, но в текущем модульном Card map
+     * есть Card, Callback, Style, Ratting, Release,
+     * Favorite, Watched, Menu, Icons и т.д.
+     */
+    function getCardModules() {
+        var wanted = [
+            'Card',
+            'Callback',
+            'Style',
+            'Ratting',
+            'Release',
+            'Favorite',
+            'Watched',
+            'Icons',
+            'Menu',
+            'Plugins',
+            'Subscribe',
+            'Lgbt'
+        ];
 
-    function createNativeCard(data) {
-        var title =
-            data.title ||
-            data.name ||
-            data.original_title ||
-            data.original_name ||
-            'Без названия';
+        var available = [];
 
-        var year =
-            data.release_date ||
-            data.first_air_date ||
-            data.year ||
-            '';
+        try {
+            var helper =
+                Lampa.Maker.module(
+                    'Card'
+                );
 
-        year =
-            String(year).slice(0, 4);
+            var names =
+                helper &&
+                helper.moduleNames
+                    ? helper.moduleNames
+                    : [];
 
-        var img =
-            data.img ||
-            data.poster_path ||
-            '';
-
-        var rating =
-            data.vote_average ||
-            data.kp_rating ||
-            0;
-
-        rating =
-            Number(rating) || 0;
-
-        var ratingText =
-            rating > 0
-                ? rating.toFixed(1)
-                : '';
-
-        var card =
-            $(
-                '<div class="card selector layer--visible layer--render card--loaded kp-ui-card">' +
-                    '<div class="card__view">' +
-                        '<img class="card__img" loading="lazy">' +
-                        '<div class="card__icons">' +
-                            '<div class="card__icons-inner"></div>' +
-                        '</div>' +
-                        (
-                            ratingText
-                                ? '<div class="card__vote">' +
-                                    escapeHtml(
-                                        ratingText
-                                    ) +
-                                  '</div>'
-                                : ''
-                        ) +
-                    '</div>' +
-                    '<div class="card__title">' +
-                        escapeHtml(title) +
-                    '</div>' +
-                    (
-                        year
-                            ? '<div class="card__age">' +
-                                escapeHtml(
-                                    year
-                                ) +
-                              '</div>'
-                            : ''
-                    ) +
-                '</div>'
+            log(
+                'CARD MODULES AVAILABLE:',
+                names
             );
 
-        if (img) {
-            card
-                .find('.card__img')
-                .attr(
-                    'src',
-                    img
-                );
-        }
-
-        /*
-         * Сохраняем объект фильма прямо на DOM.
-         */
-        card[0].kpData =
-            data;
-
-        /*
-         * Клик мышкой.
-         */
-        card.on(
-            'click',
-            function (event) {
-                event.preventDefault();
-                event.stopPropagation();
-
-                log(
-                    'CARD CLICK:',
-                    title,
-                    '|',
-                    data.id
-                );
-
-                try {
-                    Router.call(
-                        'full',
-                        data
-                    );
-                } catch (e) {
-                    error(
-                        'ROUTER ERROR:',
-                        e
+            for (
+                var i = 0;
+                i < wanted.length;
+                i++
+            ) {
+                if (
+                    names.indexOf(
+                        wanted[i]
+                    ) !== -1
+                ) {
+                    available.push(
+                        wanted[i]
                     );
                 }
             }
-        );
+        } catch (e) {
+            error(
+                'CARD MODULE LIST ERROR:',
+                e
+            );
+        }
 
         /*
-         * Фокус пультом / клавиатурой.
+         * Card + Callback обязательны.
          */
-        card.on(
-            'hover:focus',
-            function () {
-                try {
-                    if (
-                        window.Background &&
-                        typeof Background.change ===
-                            'function'
-                    ) {
-                        Background.change(
-                            Lampa.Utils
-                                .cardImgBackground(
-                                    data
-                                )
-                        );
-                    }
-                } catch (e) {}
+        if (
+            available.indexOf('Card') === -1
+        ) {
+            available.unshift(
+                'Card'
+            );
+        }
 
-                try {
-                    if (
-                        event &&
-                        event.link &&
-                        event.link.items &&
-                        event.link.items[0]
-                    ) {
-                        event.link.items[0].last =
-                            this;
-                    }
-                } catch (e) {}
-            }
+        if (
+            available.indexOf('Callback') === -1
+        ) {
+            available.push(
+                'Callback'
+            );
+        }
+
+        log(
+            'CARD MODULES SELECTED:',
+            available
         );
 
-        return card;
+        return available;
+    }
+
+    function createNativeCard(data) {
+        try {
+            var modules =
+                getCardModules();
+
+            log(
+                'CREATE NATIVE CARD:',
+                data.title ||
+                    data.name ||
+                    'Без названия',
+                '| KP:',
+                data.id
+            );
+
+            var card =
+                Lampa.Maker.make(
+                    'Card',
+                    data,
+                    function (module) {
+                        module.only.apply(
+                            module,
+                            modules
+                        );
+                    }
+                );
+
+            if (!card) {
+                error(
+                    'NATIVE CARD CREATE RETURNED NULL'
+                );
+
+                return null;
+            }
+
+            /*
+             * Нативный Card сам создаёт:
+             *
+             * .card
+             * .card__view
+             * .card__img
+             * .card__title
+             * .card__age
+             * .card__vote
+             *
+             * через свой Card module.
+             */
+
+            card.use({
+                onFocus: function () {
+                    try {
+                        if (
+                            window.Background &&
+                            typeof Background.change ===
+                                'function'
+                        ) {
+                            Background.change(
+                                Lampa.Utils
+                                    .cardImgBackground(
+                                        this.data
+                                    )
+                            );
+                        }
+                    } catch (e) {}
+                },
+
+                onEnter: function () {
+                    log(
+                        'CARD ENTER:',
+                        this.data &&
+                        (
+                            this.data.title ||
+                            this.data.name
+                        ),
+                        '|',
+                        this.data &&
+                        this.data.id
+                    );
+
+                    try {
+                        Router.call(
+                            'full',
+                            this.data
+                        );
+                    } catch (e) {
+                        error(
+                            'ROUTER ERROR:',
+                            e
+                        );
+                    }
+                }
+            });
+
+            var element = null;
+
+            if (
+                typeof card.render ===
+                'function'
+            ) {
+                element =
+                    card.render();
+            }
+
+            if (!element) {
+                error(
+                    'NATIVE CARD RENDER RETURNED NULL'
+                );
+
+                return null;
+            }
+
+            log(
+                'NATIVE CARD DOM:',
+                element &&
+                element.length
+                    ? element[0]
+                    : element
+            );
+
+            return {
+                instance: card,
+                element: element
+            };
+        } catch (e) {
+            error(
+                'NATIVE CARD ERROR:',
+                e
+            );
+
+            return null;
+        }
     }
 
     function createRow(results) {
@@ -668,18 +695,29 @@
             i < results.length;
             i++
         ) {
-            var card =
+            var created =
                 createNativeCard(
                     results[i]
                 );
 
-            if (!card) {
+            if (
+                !created ||
+                !created.element
+            ) {
                 continue;
             }
 
-            mapping.append(
-                card
-            );
+            if (
+                created.element.jquery
+            ) {
+                mapping.append(
+                    created.element
+                );
+            } else {
+                mapping.append(
+                    $(created.element)
+                );
+            }
 
             cardCount++;
         }
@@ -751,8 +789,10 @@
                 results
             );
 
-        if (!built ||
-            !built.row) {
+        if (
+            !built ||
+            !built.row
+        ) {
             error(
                 'ROW BUILD FAILED'
             );
@@ -763,10 +803,6 @@
         var row =
             built.row;
 
-        /*
-         * Главное изменение v1.5.6:
-         * карточки уже являются настоящими DOM-элементами.
-         */
         $(row).insertAfter(
             nativeRecommendations
         );
@@ -785,9 +821,6 @@
             row.find('.card').length
         );
 
-        /*
-         * Проверяем итоговый DOM.
-         */
         var timerAttempts = 0;
 
         var timer =
@@ -1021,12 +1054,12 @@
         }
 
         if (
-            window.__kp_ui_156_installed
+            window.__kp_ui_157_installed
         ) {
             return true;
         }
 
-        window.__kp_ui_156_installed =
+        window.__kp_ui_157_installed =
             true;
 
         Lampa.Listener.follow(
@@ -1051,10 +1084,6 @@
                     'FULL COMPLETE EVENT'
                 );
 
-                /*
-                 * Не запускаем KP здесь.
-                 * Сначала ждём нативные рекомендации.
-                 */
                 waitForNativeRecommendations(
                     event,
                     function (
