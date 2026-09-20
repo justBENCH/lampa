@@ -1,8 +1,8 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.0.4';
-    var BUILD = '2026-09-20-17-50';
+    var VERSION = '1.0.5';
+    var BUILD = '2026-09-20-18-00';
     var PLUGIN = 'kp_recommendations_test';
 
     console.log('[KP UI] ========================================');
@@ -19,13 +19,26 @@
         version: VERSION
     };
 
-    var KP_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=104';
+    var KP_API =
+        'https://kinopoiskapiunofficial.tech/';
+
+    var KP_KEY =
+        '2a4a0808-81a3-40ae-b0d3-e11335ede616';
+
+    var KP_SOURCE_URL =
+        'https://nb557.github.io/plugins/kp_source.js?v=105';
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
-        args.unshift('[KP UI v' + VERSION + ']');
-        console.log.apply(console, args);
+
+        args.unshift(
+            '[KP UI v' + VERSION + ']'
+        );
+
+        console.log.apply(
+            console,
+            args
+        );
     }
 
     function loadKP(callback) {
@@ -37,51 +50,78 @@
             Lampa.Api.sources.KP
         ) {
             log('KP already loaded');
+
             callback();
+
             return;
         }
 
         log('Loading kp_source.js');
 
-        var script = document.createElement('script');
+        var script =
+            document.createElement('script');
 
-        script.src = KP_URL;
+        script.src =
+            KP_SOURCE_URL;
 
-        script.onload = function () {
-            log('kp_source.js loaded');
+        script.onload =
+            function () {
+                log(
+                    'kp_source.js loaded'
+                );
 
-            var attempts = 0;
+                var attempts = 0;
 
-            var timer = setInterval(function () {
-                attempts++;
+                var timer =
+                    setInterval(
+                        function () {
+                            attempts++;
 
-                if (
-                    window.kp_source_plugin &&
-                    Lampa.Api &&
-                    Lampa.Api.sources &&
-                    Lampa.Api.sources.KP
-                ) {
-                    clearInterval(timer);
+                            if (
+                                window.kp_source_plugin &&
+                                Lampa.Api &&
+                                Lampa.Api.sources &&
+                                Lampa.Api.sources.KP
+                            ) {
+                                clearInterval(
+                                    timer
+                                );
 
-                    log('KP source registered');
+                                log(
+                                    'KP source registered'
+                                );
 
-                    callback();
-                    return;
-                }
+                                callback();
 
-                if (attempts >= 40) {
-                    clearInterval(timer);
+                                return;
+                            }
 
-                    log('KP registration timeout');
-                }
-            }, 250);
-        };
+                            if (
+                                attempts >= 40
+                            ) {
+                                clearInterval(
+                                    timer
+                                );
 
-        script.onerror = function () {
-            log('ERROR loading kp_source.js');
-        };
+                                log(
+                                    'KP registration timeout'
+                                );
+                            }
+                        },
+                        250
+                    );
+            };
 
-        document.head.appendChild(script);
+        script.onerror =
+            function () {
+                log(
+                    'ERROR loading kp_source.js'
+                );
+            };
+
+        document.head.appendChild(
+            script
+        );
     }
 
     function getCurrentCard(root) {
@@ -89,38 +129,50 @@
         var year = '';
 
         var titleEl =
-            root.find('.full-start-new__title');
+            root.find(
+                '.full-start-new__title'
+            );
 
         if (titleEl.length) {
-            title = titleEl
-                .first()
-                .text()
-                .trim();
+            title =
+                titleEl
+                    .first()
+                    .text()
+                    .trim();
         }
 
         var head =
-            root.find('.full-start-new__head');
+            root.find(
+                '.full-start-new__head'
+            );
 
         if (head.length) {
             var match =
                 head
                     .first()
                     .text()
-                    .match(/\b(19|20)\d{2}\b/);
+                    .match(
+                        /\b(19|20)\d{2}\b/
+                    );
 
             if (match) {
-                year = match[0];
+                year =
+                    match[0];
             }
         }
 
         if (!year) {
-            var text = root.text();
+            var text =
+                root.text();
 
             var fallback =
-                text.match(/\b(19|20)\d{2}\b/);
+                text.match(
+                    /\b(19|20)\d{2}\b/
+                );
 
             if (fallback) {
-                year = fallback[0];
+                year =
+                    fallback[0];
             }
         }
 
@@ -131,27 +183,17 @@
     }
 
     function searchKP(card, callback) {
-        var source =
-            Lampa.Api.sources.KP;
+        var keyword =
+            encodeURIComponent(
+                card.title
+            );
 
-        if (
-            !source ||
-            typeof source.discovery !== 'function'
-        ) {
-            log('ERROR: KP discovery unavailable');
-            return;
-        }
-
-        var discovery =
-            source.discovery();
-
-        if (
-            !discovery ||
-            typeof discovery.search !== 'function'
-        ) {
-            log('ERROR: KP search unavailable');
-            return;
-        }
+        var url =
+            KP_API +
+            'api/v2.1/films/search-by-keyword' +
+            '?keyword=' +
+            keyword +
+            '&page=1';
 
         log(
             'SEARCHING:',
@@ -159,135 +201,186 @@
             card.year
         );
 
-        /*
-         * ВАЖНО:
-         * Используем именно search, а не keyword.
-         * Этот вариант уже успешно работал
-         * в предыдущем тесте kp_source.js.
-         */
-        var params = {
-            search: card.title,
-            page: 1
-        };
-
         log(
-            'SEARCH PARAMS:',
-            params
+            'SEARCH URL:',
+            url
         );
 
-        discovery.search(
-            params,
-            function (result) {
-                log(
-                    'SEARCH RESPONSE:',
-                    result
-                );
+        fetch(
+            url,
+            {
+                method: 'GET',
 
-                var results =
-                    result &&
-                    Array.isArray(result.results)
-                        ? result.results
-                        : [];
-
-                log(
-                    'SEARCH RESULTS:',
-                    results.length
-                );
-
-                if (!results.length) {
-                    log('No results');
-                    return;
+                headers: {
+                    'X-API-KEY':
+                        KP_KEY
                 }
+            }
+        )
+            .then(
+                function (response) {
+                    log(
+                        'SEARCH HTTP:',
+                        response.status,
+                        response.statusText
+                    );
 
-                var selected = null;
-
-                /*
-                 * Сначала ищем точное совпадение
-                 * названия + года.
-                 */
-                for (
-                    var i = 0;
-                    i < results.length;
-                    i++
-                ) {
-                    var item = results[i];
-
-                    var title =
-                        item.title ||
-                        item.name ||
-                        '';
-
-                    var itemYear =
-                        item.year ||
-                        item.release_year ||
-                        '';
-
-                    if (
-                        title.toLowerCase() ===
-                            card.title.toLowerCase() &&
-                        String(itemYear) ===
-                            String(card.year)
-                    ) {
-                        selected = item;
-
-                        break;
+                    if (!response.ok) {
+                        throw new Error(
+                            'HTTP ' +
+                            response.status
+                        );
                     }
+
+                    return response.json();
                 }
+            )
+            .then(
+                function (json) {
+                    log(
+                        'SEARCH RESPONSE:',
+                        json
+                    );
 
-                /*
-                 * Если год не совпал —
-                 * ищем совпадение только по названию.
-                 */
-                if (!selected) {
+                    var results =
+                        json &&
+                        Array.isArray(
+                            json.items
+                        )
+                            ? json.items
+                            : [];
+
+                    log(
+                        'SEARCH RESULTS:',
+                        results.length
+                    );
+
+                    if (!results.length) {
+                        log(
+                            'No results'
+                        );
+
+                        return;
+                    }
+
+                    var selected =
+                        null;
+
+                    /*
+                     * Точное название + год.
+                     */
                     for (
-                        var j = 0;
-                        j < results.length;
-                        j++
+                        var i = 0;
+                        i < results.length;
+                        i++
                     ) {
-                        var item2 = results[j];
+                        var item =
+                            results[i];
 
-                        var title2 =
-                            item2.title ||
-                            item2.name ||
+                        var title =
+                            item.nameRu ||
+                            item.nameEn ||
+                            item.nameOriginal ||
+                            '';
+
+                        var itemYear =
+                            item.year ||
                             '';
 
                         if (
-                            title2.toLowerCase() ===
-                            card.title.toLowerCase()
+                            title
+                                .toLowerCase() ===
+                                card.title
+                                    .toLowerCase() &&
+                            String(
+                                itemYear
+                            ) ===
+                                String(
+                                    card.year
+                                )
                         ) {
-                            selected = item2;
+                            selected =
+                                item;
 
                             break;
                         }
                     }
+
+                    /*
+                     * Только название.
+                     */
+                    if (!selected) {
+                        for (
+                            var j = 0;
+                            j < results.length;
+                            j++
+                        ) {
+                            var item2 =
+                                results[j];
+
+                            var title2 =
+                                item2.nameRu ||
+                                item2.nameEn ||
+                                item2.nameOriginal ||
+                                '';
+
+                            if (
+                                title2
+                                    .toLowerCase() ===
+                                    card.title
+                                        .toLowerCase()
+                            ) {
+                                selected =
+                                    item2;
+
+                                break;
+                            }
+                        }
+                    }
+
+                    /*
+                     * Первый результат.
+                     */
+                    if (!selected) {
+                        selected =
+                            results[0];
+                    }
+
+                    log(
+                        'SELECTED:',
+                        selected
+                    );
+
+                    callback(
+                        selected
+                    );
                 }
-
-                /*
-                 * Последний fallback —
-                 * первый результат KP.
-                 */
-                if (!selected) {
-                    selected = results[0];
+            )
+            .catch(
+                function (error) {
+                    log(
+                        'SEARCH ERROR:',
+                        error
+                    );
                 }
-
-                log(
-                    'SELECTED:',
-                    selected
-                );
-
-                callback(selected);
-            }
-        );
+            );
     }
 
-    function getKPFull(selected, callback) {
+    function getKPFull(
+        selected,
+        callback
+    ) {
         var kpId =
+            selected.kinopoiskId ||
             selected.kinopoisk_id ||
             selected.kp_id ||
             selected.id;
 
         if (!kpId) {
-            log('ERROR: No KP ID');
+            log(
+                'ERROR: No KP ID'
+            );
+
             return;
         }
 
@@ -304,9 +397,11 @@
             {
                 card: {
                     source: 'KP',
-                    kinopoisk_id: kpId
+                    kinopoisk_id:
+                        kpId
                 }
             },
+
             function (json) {
                 log(
                     'KP FULL RESPONSE:',
@@ -317,7 +412,9 @@
                     !json ||
                     !json.simular ||
                     !Array.isArray(
-                        json.simular.results
+                        json
+                            .simular
+                            .results
                     )
                 ) {
                     log(
@@ -329,13 +426,19 @@
 
                 log(
                     'SIMILAR COUNT:',
-                    json.simular.results.length
+                    json
+                        .simular
+                        .results
+                        .length
                 );
 
                 callback(
-                    json.simular.results
+                    json
+                        .simular
+                        .results
                 );
             },
+
             function (error) {
                 log(
                     'KP FULL ERROR:',
@@ -364,7 +467,10 @@
                 item.release_date
                     ? String(
                         item.release_date
-                    ).slice(0, 4)
+                    ).slice(
+                        0,
+                        4
+                    )
                     : ''
             )
         );
@@ -405,37 +511,51 @@
         var vote =
             getVote(item);
 
-        var card = $(
-            '<div class="card selector layer--visible layer--render card--loaded">' +
+        var card =
+            $(
+                '<div class="card selector layer--visible layer--render card--loaded">' +
 
-                '<div class="card__view">' +
+                    '<div class="card__view">' +
 
-                    '<img class="card__img">' +
+                        '<img class="card__img">' +
 
-                    '<div class="card__icons">' +
-                        '<div class="card__icons-inner"></div>' +
+                        '<div class="card__icons">' +
+                            '<div class="card__icons-inner"></div>' +
+                        '</div>' +
+
                     '</div>' +
 
-                '</div>' +
+                    '<div class="card__title"></div>' +
+                    '<div class="card__age"></div>' +
 
-                '<div class="card__title"></div>' +
-                '<div class="card__age"></div>' +
-
-            '</div>'
-        );
+                '</div>'
+            );
 
         card
-            .find('.card__title')
-            .text(title);
+            .find(
+                '.card__title'
+            )
+            .text(
+                title
+            );
 
         card
-            .find('.card__age')
-            .text(year);
+            .find(
+                '.card__age'
+            )
+            .text(
+                year
+            );
 
         if (poster) {
             card
-                .find('.card__img')
-                .attr('src', poster)
+                .find(
+                    '.card__img'
+                )
+                .attr(
+                    'src',
+                    poster
+                )
                 .on(
                     'error',
                     function () {
@@ -445,7 +565,9 @@
                 );
         } else {
             card
-                .find('.card__img')
+                .find(
+                    '.card__img'
+                )
                 .attr(
                     'src',
                     './img/img_broken.svg'
@@ -458,10 +580,15 @@
             vote !== undefined
         ) {
             card
-                .find('.card__view')
+                .find(
+                    '.card__view'
+                )
                 .append(
-                    $('<div class="card__vote"></div>')
-                        .text(vote)
+                    $(
+                        '<div class="card__vote"></div>'
+                    ).text(
+                        vote
+                    )
                 );
         }
 
@@ -481,24 +608,27 @@
     }
 
     function createLine(results) {
-        var line = $(
-            '<div class="items-line layer--visible layer--render items-line--type-default">' +
+        var line =
+            $(
+                '<div class="items-line layer--visible layer--render items-line--type-default">' +
 
-                '<div class="items-line__head">' +
+                    '<div class="items-line__head">' +
 
-                    '<div class="items-line__title">' +
-                        'Рекомендации Кинопоиска' +
+                        '<div class="items-line__title">' +
+                            'Рекомендации Кинопоиска' +
+                        '</div>' +
+
                     '</div>' +
 
-                '</div>' +
+                    '<div class="items-line__body">' +
 
-                '<div class="items-line__body">' +
+                        '<div class="scroll scroll--horizontal">' +
 
-                    '<div class="scroll scroll--horizontal">' +
+                            '<div class="scroll__content">' +
 
-                        '<div class="scroll__content">' +
+                                '<div class="scroll__body mapping--line">' +
 
-                            '<div class="scroll__body mapping--line">' +
+                                '</div>' +
 
                             '</div>' +
 
@@ -506,18 +636,20 @@
 
                     '</div>' +
 
-                '</div>' +
-
-            '</div>'
-        );
+                '</div>'
+            );
 
         var body =
-            line.find('.mapping--line');
+            line.find(
+                '.mapping--line'
+            );
 
         results.forEach(
             function (item) {
                 body.append(
-                    createCard(item)
+                    createCard(
+                        item
+                    )
                 );
             }
         );
@@ -525,9 +657,14 @@
         return line;
     }
 
-    function insertLine(root, results) {
+    function insertLine(
+        root,
+        results
+    ) {
         root
-            .find('.kp-recommendations-line')
+            .find(
+                '.kp-recommendations-line'
+            )
             .remove();
 
         if (
@@ -542,7 +679,9 @@
         }
 
         var line =
-            createLine(results);
+            createLine(
+                results
+            );
 
         line.addClass(
             'kp-recommendations-line'
@@ -565,7 +704,9 @@
                 )
                 .first();
 
-        if (similarTitle.length) {
+        if (
+            similarTitle.length
+        ) {
             var similarLine =
                 similarTitle.closest(
                     '.items-line'
@@ -579,7 +720,9 @@
                 'Inserted before "Похожие"'
             );
         } else {
-            root.append(line);
+            root.append(
+                line
+            );
 
             log(
                 '"Похожие" not found'
@@ -646,7 +789,9 @@
                 }
 
                 var card =
-                    getCurrentCard(root);
+                    getCurrentCard(
+                        root
+                    );
 
                 log(
                     'CURRENT CARD:',
