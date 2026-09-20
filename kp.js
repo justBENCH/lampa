@@ -1,10 +1,12 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.6.2';
+    var VERSION = '1.6.3';
     var KP_SOURCE_URL = 'https://nb557.github.io/plugins/kp_source.js';
     var loading = false;
     var mounted = false;
+    var nativeRecommendationsRoot = null;
+    var pendingResults = null;
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
@@ -243,7 +245,13 @@
         log('MOUNTED AFTER:', anchor.find('.items-line__title').first().text().trim());
     }
 
-    function start(event, root) {
+    function maybeMount() {
+        if (!nativeRecommendationsRoot || !pendingResults || mounted) return;
+
+        mount(nativeRecommendationsRoot, pendingResults);
+    }
+
+    function start(event) {
         if (loading || mounted) return;
         var card = getCard(event);
         if (!card) {
@@ -269,7 +277,10 @@
                 loadSimilar(id, function (items) {
                     items = prepare(items);
                     if (!items.length) fail('NO KP SIMILAR RESULTS');
-                    else mount(root, items);
+                    else {
+                        pendingResults = items;
+                        maybeMount();
+                    }
                     loading = false;
                 });
             });
@@ -277,28 +288,25 @@
     }
 
     function onFull(event) {
-        if (!event || event.type !== 'complite') return;
-        mounted = false;
-        loading = false;
+        if (!event) return;
 
-        var activity = event.object && event.object.activity;
-        var root = activity && typeof activity.render === 'function' && activity.render();
-        if (!root || !root.find) {
-            fail('FULL ROOT NOT FOUND');
+        // On TV, rows after the first screen are lazy.  The native
+        // recommendations row appears only when Lampa emits this build event;
+        // waiting for it in the DOM after `complite` can never succeed.
+        if (event.type === 'build' && event.name === 'cards' &&
+            event.data && String(event.data.title || '').trim().toLowerCase() === 'рекомендации') {
+            nativeRecommendationsRoot = event.body;
+            log('NATIVE RECOMMENDATIONS BUILT');
+            maybeMount();
             return;
         }
 
-        // The native recommendations row can arrive after the `complite` event,
-        // especially on TV hardware.  Never mount before it: KP must follow it.
-        waitFor(function () {
-            return insertionAnchor(root).length ? root : false;
-        }, function (readyRoot) {
-            if (!readyRoot) {
-                fail('INSERTION POINT TIMEOUT');
-                return;
-            }
-            start(event, readyRoot);
-        }, 30000);
+        if (event.type !== 'complite') return;
+        mounted = false;
+        loading = false;
+        nativeRecommendationsRoot = null;
+        pendingResults = null;
+        start(event);
     }
 
     if (window.__KP_RECOMMENDATIONS_160__) return;
