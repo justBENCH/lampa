@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.6.0';
+    var VERSION = '1.6.1';
     var KP_SOURCE_URL = 'https://nb557.github.io/plugins/kp_source.js';
     var loading = false;
     var mounted = false;
