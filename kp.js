@@ -1,8 +1,8 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.0.7';
-    var BUILD = '2026-09-20-18-25';
+    var VERSION = '1.0.8';
+    var BUILD = '2026-09-20-17-55';
     var PLUGIN = 'kp_recommendations_test';
 
     console.log('[KP UI] ========================================');
@@ -10,7 +10,10 @@
     console.log('[KP UI] BUILD:', BUILD);
     console.log('[KP UI] ========================================');
 
-    if (window[PLUGIN] && window[PLUGIN].version === VERSION) {
+    if (
+        window[PLUGIN] &&
+        window[PLUGIN].version === VERSION
+    ) {
         console.log('[KP UI] ALREADY INSTALLED:', VERSION);
         return;
     }
@@ -20,7 +23,7 @@
     };
 
     var KP_SOURCE_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=107';
+        'https://nb557.github.io/plugins/kp_source.js?v=108';
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
@@ -197,10 +200,6 @@
         return null;
     }
 
-    /*
-     * Ищем TMDB ID и уже готовый KP ID
-     * в реальном объекте Lampa.
-     */
     function extractIds(event) {
         var objects = [
             event &&
@@ -268,7 +267,8 @@
                         object,
                         [
                             'imdb_id',
-                            'imdbId'
+                            'imdbId',
+                            'imdb'
                         ]
                     );
             }
@@ -277,234 +277,114 @@
         return result;
     }
 
-    /*
-     * Пробуем получить TMDB full через уже
-     * подключённый Lampa TMDB source.
-     *
-     * В разных версиях Lampa сигнатура может
-     * немного отличаться, поэтому пробуем
-     * несколько вариантов.
-     */
-    function getTMDBData(tmdbId, callback) {
-        var tmdb =
-            Lampa.Api &&
-            Lampa.Api.sources &&
-            Lampa.Api.sources.tmdb;
-
-        if (!tmdb) {
-            log(
-                'TMDB source unavailable'
-            );
-
-            callback(null);
-            return;
-        }
-
+    function getKpIdFromWikidata(imdbId, callback) {
         log(
-            'TMDB SOURCE:',
-            tmdb
+            'WIKIDATA LOOKUP IMDb:',
+            imdbId
         );
 
-        if (
-            typeof tmdb.full === 'function'
-        ) {
-            log(
-                'Calling TMDB.full(...)'
-            );
+        var query =
+            'SELECT ?item ?kp WHERE {' +
+            '?item wdt:P345 "' +
+            String(imdbId).replace(/"/g, '') +
+            '". ' +
+            '?item wdt:P1237 ?kp. ' +
+            '} LIMIT 1';
 
-            try {
-                tmdb.full(
-                    {
-                        card: {
-                            source: 'tmdb',
-                            id: tmdbId,
-                            tmdb_id: tmdbId
-                        }
-                    },
-                    function (json) {
-                        log(
-                            'TMDB FULL RESPONSE:',
-                            json
-                        );
-
-                        callback(json);
-                    },
-                    function (error) {
-                        log(
-                            'TMDB FULL ERROR:',
-                            error
-                        );
-
-                        callback(null);
-                    }
-                );
-
-                return;
-            } catch (error) {
-                log(
-                    'TMDB.full EXCEPTION:',
-                    error
-                );
-            }
-        }
-
-        if (
-            typeof tmdb.get === 'function'
-        ) {
-            log(
-                'Calling TMDB.get(...)'
-            );
-
-            try {
-                tmdb.get(
-                    tmdbId,
-                    function (json) {
-                        log(
-                            'TMDB GET RESPONSE:',
-                            json
-                        );
-
-                        callback(json);
-                    },
-                    function (error) {
-                        log(
-                            'TMDB.get ERROR:',
-                            error
-                        );
-
-                        callback(null);
-                    }
-                );
-
-                return;
-            } catch (error2) {
-                log(
-                    'TMDB.get EXCEPTION:',
-                    error2
-                );
-            }
-        }
+        var url =
+            'https://query.wikidata.org/sparql' +
+            '?query=' +
+            encodeURIComponent(query) +
+            '&format=json';
 
         log(
-            'No usable TMDB method'
+            'WIKIDATA URL:',
+            url
         );
 
-        callback(null);
-    }
-
-    /*
-     * Рекурсивно ищем KP ID в ответе TMDB.
-     */
-    function findKpId(object, path, visited) {
-        if (
-            object === null ||
-            object === undefined ||
-            typeof object !== 'object'
-        ) {
-            return null;
-        }
-
-        if (!visited) {
-            visited = [];
-        }
-
-        if (
-            visited.indexOf(object) !== -1
-        ) {
-            return null;
-        }
-
-        visited.push(object);
-
-        var keys;
-
-        try {
-            keys =
-                Object.keys(object);
-        } catch (e) {
-            return null;
-        }
-
-        for (
-            var i = 0;
-            i < keys.length;
-            i++
-        ) {
-            var key =
-                keys[i];
-
-            var lower =
-                key.toLowerCase();
-
-            var value;
-
-            try {
-                value =
-                    object[key];
-            } catch (e2) {
-                continue;
-            }
-
-            if (
-                lower === 'kinopoisk_id' ||
-                lower === 'kinopoiskid' ||
-                lower === 'kp_id' ||
-                lower === 'kpid'
-            ) {
-                if (
-                    value !== null &&
-                    value !== undefined &&
-                    String(value) !== ''
-                ) {
-                    log(
-                        'KP ID FOUND:',
-                        value,
-                        'PATH:',
-                        path + '.' + key
-                    );
-
-                    return value;
+        fetch(
+            url,
+            {
+                method: 'GET',
+                headers: {
+                    'Accept':
+                        'application/sparql-results+json'
                 }
             }
-        }
+        )
+            .then(
+                function (response) {
+                    log(
+                        'WIKIDATA HTTP:',
+                        response.status
+                    );
 
-        for (
-            var j = 0;
-            j < keys.length;
-            j++
-        ) {
-            var key2 =
-                keys[j];
+                    if (!response.ok) {
+                        throw new Error(
+                            'HTTP ' +
+                            response.status
+                        );
+                    }
 
-            var value2;
+                    return response.json();
+                }
+            )
+            .then(
+                function (json) {
+                    log(
+                        'WIKIDATA RESPONSE:',
+                        json
+                    );
 
-            try {
-                value2 =
-                    object[key2];
-            } catch (e3) {
-                continue;
-            }
+                    var bindings =
+                        json &&
+                        json.results &&
+                        Array.isArray(
+                            json.results.bindings
+                        )
+                            ? json.results.bindings
+                            : [];
 
-            if (
-                !value2 ||
-                typeof value2 !== 'object'
-            ) {
-                continue;
-            }
+                    if (!bindings.length) {
+                        log(
+                            'WIKIDATA: KP ID NOT FOUND'
+                        );
 
-            var found =
-                findKpId(
-                    value2,
-                    path + '.' + key2,
-                    visited
-                );
+                        callback(null);
+                        return;
+                    }
 
-            if (found) {
-                return found;
-            }
-        }
+                    var kp =
+                        bindings[0].kp &&
+                        bindings[0].kp.value;
 
-        return null;
+                    if (!kp) {
+                        log(
+                            'WIKIDATA: EMPTY KP ID'
+                        );
+
+                        callback(null);
+                        return;
+                    }
+
+                    log(
+                        'WIKIDATA KP ID:',
+                        kp
+                    );
+
+                    callback(kp);
+                }
+            )
+            .catch(
+                function (error) {
+                    log(
+                        'WIKIDATA ERROR:',
+                        error
+                    );
+
+                    callback(null);
+                }
+            );
     }
 
     function getKPFull(
@@ -691,7 +571,9 @@
                 .append(
                     $(
                         '<div class="card__vote"></div>'
-                    ).text(vote)
+                    ).text(
+                        vote
+                    )
                 );
         }
 
@@ -891,8 +773,8 @@
                 );
 
                 /*
-                 * Вариант 1:
-                 * KP ID уже есть.
+                 * 1. Если Lampa уже дала KP ID —
+                 *    используем его напрямую.
                  */
                 if (ids.kp) {
                     loadKP(
@@ -915,48 +797,28 @@
                 }
 
                 /*
-                 * Вариант 2:
-                 * Есть TMDB ID.
+                 * 2. Если есть IMDb —
+                 *    IMDb -> Wikidata -> KP.
                  */
-                if (ids.tmdb) {
+                if (ids.imdb) {
                     log(
-                        'TMDB ID:',
-                        ids.tmdb
+                        'IMDb FOUND:',
+                        ids.imdb
                     );
 
-                    loadKP(
-                        function () {
-                            getTMDBData(
-                                ids.tmdb,
-                                function (
-                                    tmdbJson
-                                ) {
-                                    if (
-                                        !tmdbJson
-                                    ) {
-                                        log(
-                                            'TMDB DATA EMPTY'
-                                        );
+                    getKpIdFromWikidata(
+                        ids.imdb,
+                        function (kpId) {
+                            if (!kpId) {
+                                log(
+                                    'NO KP ID FROM IMDb'
+                                );
 
-                                        return;
-                                    }
+                                return;
+                            }
 
-                                    var kpId =
-                                        findKpId(
-                                            tmdbJson,
-                                            'tmdb'
-                                        );
-
-                                    if (
-                                        !kpId
-                                    ) {
-                                        log(
-                                            'KP ID NOT FOUND IN TMDB RESPONSE'
-                                        );
-
-                                        return;
-                                    }
-
+                            loadKP(
+                                function () {
                                     getKPFull(
                                         kpId,
                                         function (
@@ -977,7 +839,7 @@
                 }
 
                 log(
-                    'NO TMDB ID / KP ID FOUND'
+                    'NO KP ID / IMDb ID FOUND'
                 );
             }
         );
