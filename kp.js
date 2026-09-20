@@ -1,34 +1,23 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.0.9';
-    var BUILD = '2026-09-20-18-05';
+    var VERSION = '1.1.0';
+    var BUILD = '2026-09-20-18-15';
     var PLUGIN = 'kp_recommendations_test';
 
-    console.log('[KP UI] ========================================');
-    console.log('[KP UI] VERSION:', VERSION);
-    console.log('[KP UI] BUILD:', BUILD);
-    console.log('[KP UI] ========================================');
+    var START_TIME = performance.now();
 
-    if (
-        window[PLUGIN] &&
-        window[PLUGIN].version === VERSION
-    ) {
-        console.log('[KP UI] ALREADY INSTALLED:', VERSION);
-        return;
+    function elapsed() {
+        return Math.round(
+            performance.now() - START_TIME
+        );
     }
-
-    window[PLUGIN] = {
-        version: VERSION
-    };
-
-    var KP_SOURCE_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=109';
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
 
         args.unshift(
+            '[T+' + elapsed() + 'ms]',
             '[KP UI v' + VERSION + ']'
         );
 
@@ -38,6 +27,40 @@
         );
     }
 
+    console.log(
+        '[KP UI] VERSION:',
+        VERSION
+    );
+
+    console.log(
+        '[KP UI] BUILD:',
+        BUILD
+    );
+
+    console.log(
+        '[KP UI] START:',
+        new Date().toISOString()
+    );
+
+    if (
+        window[PLUGIN] &&
+        window[PLUGIN].version === VERSION
+    ) {
+        console.log(
+            '[KP UI] ALREADY INSTALLED:',
+            VERSION
+        );
+
+        return;
+    }
+
+    window[PLUGIN] = {
+        version: VERSION
+    };
+
+    var KP_SOURCE_URL =
+        'https://nb557.github.io/plugins/kp_source.js?v=110';
+
     function loadKP(callback) {
         if (
             window.kp_source_plugin &&
@@ -46,62 +69,79 @@
             Lampa.Api.sources &&
             Lampa.Api.sources.KP
         ) {
-            log('KP already loaded');
+            log(
+                'KP already loaded'
+            );
+
             callback();
+
             return;
         }
 
-        log('Loading kp_source.js');
+        log(
+            'KP LOAD START'
+        );
 
         var script =
             document.createElement('script');
 
-        script.src = KP_SOURCE_URL;
+        script.src =
+            KP_SOURCE_URL;
 
-        script.onload = function () {
-            log('kp_source.js loaded');
+        script.onload =
+            function () {
+                log(
+                    'kp_source.js NETWORK LOADED'
+                );
 
-            var attempts = 0;
+                var attempts = 0;
 
-            var timer = setInterval(
-                function () {
-                    attempts++;
+                var timer =
+                    setInterval(
+                        function () {
+                            attempts++;
 
-                    if (
-                        window.kp_source_plugin &&
-                        Lampa.Api &&
-                        Lampa.Api.sources &&
-                        Lampa.Api.sources.KP
-                    ) {
-                        clearInterval(timer);
+                            if (
+                                window.kp_source_plugin &&
+                                Lampa.Api &&
+                                Lampa.Api.sources &&
+                                Lampa.Api.sources.KP
+                            ) {
+                                clearInterval(timer);
 
-                        log(
-                            'KP source registered'
-                        );
+                                log(
+                                    'KP SOURCE REGISTERED'
+                                );
 
-                        callback();
-                        return;
-                    }
+                                callback();
 
-                    if (attempts >= 40) {
-                        clearInterval(timer);
+                                return;
+                            }
 
-                        log(
-                            'KP registration timeout'
-                        );
-                    }
-                },
-                250
-            );
-        };
+                            if (
+                                attempts >= 40
+                            ) {
+                                clearInterval(timer);
 
-        script.onerror = function () {
-            log(
-                'ERROR loading kp_source.js'
-            );
-        };
+                                log(
+                                    'KP REGISTRATION TIMEOUT'
+                                );
+                            }
+                        },
+                        100
+                    );
+            };
 
-        document.head.appendChild(script);
+        script.onerror =
+            function () {
+                log(
+                    'KP SOURCE LOAD ERROR'
+                );
+            };
+
+        document.head.appendChild(
+            script
+        );
     }
 
     function getCurrentCard(root) {
@@ -113,7 +153,9 @@
                 '.full-start-new__title'
             );
 
-        if (titleEl.length) {
+        if (
+            titleEl.length
+        ) {
             title =
                 titleEl
                     .first()
@@ -126,7 +168,9 @@
                 '.full-start-new__head'
             );
 
-        if (head.length) {
+        if (
+            head.length
+        ) {
             var match =
                 head
                     .first()
@@ -135,12 +179,17 @@
                         /\b(19|20)\d{2}\b/
                     );
 
-            if (match) {
-                year = match[0];
+            if (
+                match
+            ) {
+                year =
+                    match[0];
             }
         }
 
-        if (!year) {
+        if (
+            !year
+        ) {
             var text =
                 root.text();
 
@@ -149,8 +198,11 @@
                     /\b(19|20)\d{2}\b/
                 );
 
-            if (fallback) {
-                year = fallback[0];
+            if (
+                fallback
+            ) {
+                year =
+                    fallback[0];
             }
         }
 
@@ -160,7 +212,10 @@
         };
     }
 
-    function getValue(object, names) {
+    function getValue(
+        object,
+        names
+    ) {
         if (
             !object ||
             typeof object !== 'object'
@@ -177,7 +232,9 @@
 
             try {
                 value =
-                    object[names[i]];
+                    object[
+                        names[i]
+                    ];
             } catch (e) {
                 continue;
             }
@@ -225,11 +282,15 @@
             var object =
                 objects[i];
 
-            if (!object) {
+            if (
+                !object
+            ) {
                 continue;
             }
 
-            if (!result.kp) {
+            if (
+                !result.kp
+            ) {
                 result.kp =
                     getValue(
                         object,
@@ -242,7 +303,9 @@
                     );
             }
 
-            if (!result.tmdb) {
+            if (
+                !result.tmdb
+            ) {
                 result.tmdb =
                     getValue(
                         object,
@@ -255,7 +318,9 @@
                     );
             }
 
-            if (!result.imdb) {
+            if (
+                !result.imdb
+            ) {
                 result.imdb =
                     getValue(
                         object,
@@ -276,18 +341,18 @@
         callback
     ) {
         log(
-            'WIKIDATA LOOKUP IMDb:',
+            'WIKIDATA START:',
             imdbId
         );
 
-        /*
-         * P345  = IMDb ID
-         * P2603 = Kinopoisk film ID
-         */
         var query =
             'SELECT ?item ?kp WHERE {' +
             '?item wdt:P345 "' +
-            String(imdbId).replace(/"/g, '') +
+            String(imdbId)
+                .replace(
+                    /"/g,
+                    ''
+                ) +
             '". ' +
             '?item wdt:P2603 ?kp. ' +
             '} LIMIT 1';
@@ -295,13 +360,10 @@
         var url =
             'https://query.wikidata.org/sparql' +
             '?query=' +
-            encodeURIComponent(query) +
+            encodeURIComponent(
+                query
+            ) +
             '&format=json';
-
-        log(
-            'WIKIDATA URL:',
-            url
-        );
 
         fetch(
             url,
@@ -320,7 +382,9 @@
                         response.status
                     );
 
-                    if (!response.ok) {
+                    if (
+                        !response.ok
+                    ) {
                         throw new Error(
                             'HTTP ' +
                             response.status
@@ -332,11 +396,6 @@
             )
             .then(
                 function (json) {
-                    log(
-                        'WIKIDATA RESPONSE:',
-                        json
-                    );
-
                     var bindings =
                         json &&
                         json.results &&
@@ -346,12 +405,17 @@
                             ? json.results.bindings
                             : [];
 
-                    if (!bindings.length) {
+                    if (
+                        !bindings.length
+                    ) {
                         log(
-                            'WIKIDATA: KP ID NOT FOUND'
+                            'WIKIDATA KP ID NOT FOUND'
                         );
 
-                        callback(null);
+                        callback(
+                            null
+                        );
+
                         return;
                     }
 
@@ -359,21 +423,14 @@
                         bindings[0].kp &&
                         bindings[0].kp.value;
 
-                    if (!kp) {
-                        log(
-                            'WIKIDATA: EMPTY KP ID'
-                        );
-
-                        callback(null);
-                        return;
-                    }
-
                     log(
                         'WIKIDATA KP ID:',
                         kp
                     );
 
-                    callback(kp);
+                    callback(
+                        kp || null
+                    );
                 }
             )
             .catch(
@@ -383,7 +440,9 @@
                         error
                     );
 
-                    callback(null);
+                    callback(
+                        null
+                    );
                 }
             );
     }
@@ -393,12 +452,8 @@
         callback
     ) {
         log(
-            'KINOPOSK ID:',
+            'KP FULL START:',
             kpId
-        );
-
-        log(
-            'Calling KP.full(...)'
         );
 
         Lampa.Api.sources.KP.full(
@@ -412,8 +467,7 @@
 
             function (json) {
                 log(
-                    'KP FULL RESPONSE:',
-                    json
+                    'KP FULL RESPONSE'
                 );
 
                 if (
@@ -424,7 +478,11 @@
                     )
                 ) {
                     log(
-                        'ERROR: No simular results'
+                        'KP SIMILAR DATA EMPTY'
+                    );
+
+                    callback(
+                        []
                     );
 
                     return;
@@ -450,6 +508,10 @@
                     'KP FULL ERROR:',
                     error
                 );
+
+                callback(
+                    []
+                );
             }
         );
     }
@@ -473,7 +535,10 @@
                 item.release_date
                     ? String(
                         item.release_date
-                    ).slice(0, 4)
+                    ).slice(
+                        0,
+                        4
+                    )
                     : ''
             )
         );
@@ -529,16 +594,28 @@
             );
 
         card
-            .find('.card__title')
-            .text(title);
+            .find(
+                '.card__title'
+            )
+            .text(
+                title
+            );
 
         card
-            .find('.card__age')
-            .text(year);
+            .find(
+                '.card__age'
+            )
+            .text(
+                year
+            );
 
-        if (poster) {
+        if (
+            poster
+        ) {
             card
-                .find('.card__img')
+                .find(
+                    '.card__img'
+                )
                 .attr(
                     'src',
                     poster
@@ -552,7 +629,9 @@
                 );
         } else {
             card
-                .find('.card__img')
+                .find(
+                    '.card__img'
+                )
                 .attr(
                     'src',
                     './img/img_broken.svg'
@@ -565,11 +644,15 @@
             vote !== undefined
         ) {
             card
-                .find('.card__view')
+                .find(
+                    '.card__view'
+                )
                 .append(
                     $(
                         '<div class="card__vote"></div>'
-                    ).text(vote)
+                    ).text(
+                        vote
+                    )
                 );
         }
 
@@ -579,8 +662,7 @@
                 log(
                     'SELECT:',
                     title,
-                    year,
-                    item
+                    year
                 );
             }
         );
@@ -588,10 +670,10 @@
         return card;
     }
 
-    function createLine(results) {
+    function createLine() {
         var line =
             $(
-                '<div class="items-line layer--visible layer--render items-line--type-default">' +
+                '<div class="items-line layer--visible layer--render items-line--type-default kp-recommendations-line">' +
                     '<div class="items-line__head">' +
                         '<div class="items-line__title">' +
                             'Рекомендации Кинопоиска' +
@@ -608,25 +690,11 @@
                 '</div>'
             );
 
-        var body =
-            line.find(
-                '.mapping--line'
-            );
-
-        results.forEach(
-            function (item) {
-                body.append(
-                    createCard(item)
-                );
-            }
-        );
-
         return line;
     }
 
-    function insertLine(
-        root,
-        results
+    function showLoading(
+        root
     ) {
         root
             .find(
@@ -634,23 +702,26 @@
             )
             .remove();
 
-        if (
-            !results ||
-            !results.length
-        ) {
-            log(
-                'Nothing to render'
+        var line =
+            createLine();
+
+        line
+            .find(
+                '.items-line__title'
+            )
+            .text(
+                'Рекомендации Кинопоиска'
             );
 
-            return;
-        }
-
-        var line =
-            createLine(results);
-
-        line.addClass(
-            'kp-recommendations-line'
-        );
+        line
+            .find(
+                '.mapping--line'
+            )
+            .html(
+                '<div class="kp-loading">' +
+                    'Загрузка...' +
+                '</div>'
+            );
 
         var similarTitle =
             root
@@ -673,22 +744,83 @@
             similarTitle.length
         ) {
             similarTitle
-                .closest('.items-line')
-                .before(line);
-
-            log(
-                'Inserted before "Похожие"'
-            );
+                .closest(
+                    '.items-line'
+                )
+                .before(
+                    line
+                );
         } else {
-            root.append(line);
-
-            log(
-                '"Похожие" not found'
+            root.append(
+                line
             );
         }
 
         log(
-            'KP UI RENDERED'
+            'UI LOADING ROW INSERTED'
+        );
+    }
+
+    function renderResults(
+        root,
+        results
+    ) {
+        var line =
+            root.find(
+                '.kp-recommendations-line'
+            );
+
+        if (
+            !line.length
+        ) {
+            return;
+        }
+
+        var body =
+            line.find(
+                '.mapping--line'
+            );
+
+        body.empty();
+
+        if (
+            !results ||
+            !results.length
+        ) {
+            line
+                .find(
+                    '.items-line__title'
+                )
+                .text(
+                    'Рекомендации Кинопоиска'
+                );
+
+            body.html(
+                '<div class="kp-loading">' +
+                    'Нет рекомендаций' +
+                '</div>'
+            );
+
+            log(
+                'UI EMPTY'
+            );
+
+            return;
+        }
+
+        results.forEach(
+            function (item) {
+                body.append(
+                    createCard(
+                        item
+                    )
+                );
+            }
+        );
+
+        log(
+            'UI RESULTS RENDERED:',
+            results.length
         );
     }
 
@@ -702,7 +834,9 @@
             return false;
         }
 
-        if (install.done) {
+        if (
+            install.done
+        ) {
             return true;
         }
 
@@ -727,6 +861,13 @@
                     return;
                 }
 
+                var eventStart =
+                    performance.now();
+
+                log(
+                    'FULL COMPLETE EVENT'
+                );
+
                 var root =
                     event.object.activity.render();
 
@@ -747,7 +888,9 @@
                 }
 
                 var card =
-                    getCurrentCard(root);
+                    getCurrentCard(
+                        root
+                    );
 
                 log(
                     'CURRENT CARD:',
@@ -755,81 +898,147 @@
                 );
 
                 var ids =
-                    extractIds(event);
+                    extractIds(
+                        event
+                    );
 
                 log(
                     'IDS FROM LAMPA:',
                     ids
                 );
 
-                if (ids.kp) {
-                    loadKP(
-                        function () {
-                            getKPFull(
-                                ids.kp,
-                                function (
-                                    results
-                                ) {
-                                    insertLine(
-                                        root,
-                                        results
-                                    );
-                                }
+                /*
+                 * Сразу показываем UI.
+                 */
+                showLoading(
+                    root
+                );
+
+                /*
+                 * KP source и Wikidata
+                 * запускаем параллельно.
+                 */
+                var kpReady =
+                    false;
+
+                var kpId =
+                    ids.kp || null;
+
+                var wikidataReady =
+                    false;
+
+                var wikidataKpId =
+                    null;
+
+                function tryContinue() {
+                    if (
+                        !wikidataReady ||
+                        !kpReady
+                    ) {
+                        return;
+                    }
+
+                    var finalKpId =
+                        kpId ||
+                        wikidataKpId;
+
+                    if (
+                        !finalKpId
+                    ) {
+                        log(
+                            'NO KP ID'
+                        );
+
+                        renderResults(
+                            root,
+                            []
+                        );
+
+                        return;
+                    }
+
+                    log(
+                        'FINAL KP ID:',
+                        finalKpId
+                    );
+
+                    getKPFull(
+                        finalKpId,
+                        function (
+                            results
+                        ) {
+                            log(
+                                'TOTAL PIPELINE:',
+                                Math.round(
+                                    performance.now() -
+                                    eventStart
+                                ) +
+                                'ms'
+                            );
+
+                            renderResults(
+                                root,
+                                results
                             );
                         }
                     );
-
-                    return;
                 }
 
-                if (ids.imdb) {
-                    log(
-                        'IMDb FOUND:',
-                        ids.imdb
-                    );
+                /*
+                 * KP source load.
+                 */
+                loadKP(
+                    function () {
+                        kpReady =
+                            true;
 
+                        log(
+                            'KP READY'
+                        );
+
+                        tryContinue();
+                    }
+                );
+
+                /*
+                 * IMDb -> Wikidata.
+                 */
+                if (
+                    ids.imdb
+                ) {
                     getKpIdFromWikidata(
                         ids.imdb,
-                        function (kpId) {
-                            if (!kpId) {
-                                log(
-                                    'NO KP ID FROM IMDb'
-                                );
+                        function (
+                            value
+                        ) {
+                            wikidataKpId =
+                                value;
 
-                                return;
-                            }
+                            wikidataReady =
+                                true;
 
-                            loadKP(
-                                function () {
-                                    getKPFull(
-                                        kpId,
-                                        function (
-                                            results
-                                        ) {
-                                            insertLine(
-                                                root,
-                                                results
-                                            );
-                                        }
-                                    );
-                                }
+                            log(
+                                'WIKIDATA READY'
                             );
+
+                            tryContinue();
                         }
                     );
+                } else {
+                    wikidataReady =
+                        true;
 
-                    return;
+                    tryContinue();
                 }
-
-                log(
-                    'NO KP ID / IMDb ID FOUND'
-                );
             }
         );
 
         return true;
     }
 
-    if (!install()) {
+    if (
+        !install()
+    ) {
         var attempts = 0;
 
         var timer =
@@ -841,7 +1050,9 @@
                         install() ||
                         attempts >= 120
                     ) {
-                        clearInterval(timer);
+                        clearInterval(
+                            timer
+                        );
                     }
                 },
                 500
