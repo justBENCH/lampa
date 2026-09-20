@@ -168,10 +168,7 @@
     }
 
     function insertionAnchor(root) {
-        var nativeRecommendations = findRow(root, ['рекомендации']);
-        if (nativeRecommendations.length) return nativeRecommendations;
-
-        return findRow(root, ['в ролях', 'актеры', 'актёры']);
+        return findRow(root, ['рекомендации']);
     }
 
     function createLine(items) {
@@ -190,3 +187,114 @@
                 card.use({
                     onEnter: function () {
                         Lampa.Router.call('full', data);
+                    },
+                    onFocus: function () {
+                        Lampa.Background.change(Lampa.Utils.cardImgBackground(data));
+                    }
+                });
+            }
+        });
+
+        line.create();
+        return line;
+    }
+
+    function mount(root, items) {
+        if (mounted) return;
+
+        var anchor = insertionAnchor(root);
+        if (!anchor.length) {
+            fail('NATIVE RECOMMENDATIONS NOT FOUND');
+            return;
+        }
+
+        var line;
+        try {
+            line = createLine(items);
+        } catch (error) {
+            fail('LINE CREATE ERROR:', error);
+            return;
+        }
+
+        if (!line) return;
+
+        var element = line.render();
+        if (!element || !element[0]) {
+            fail('LINE ELEMENT NOT FOUND');
+            return;
+        }
+
+        anchor[0].parentNode.insertBefore(element[0], anchor[0].nextSibling);
+        mounted = true;
+        log('MOUNTED AFTER:', anchor.find('.items-line__title').first().text().trim());
+    }
+
+    function start(event, root) {
+        if (loading || mounted) return;
+        var card = getCard(event);
+        if (!card) {
+            fail('CURRENT CARD NOT FOUND');
+            return;
+        }
+
+        loading = true;
+        loadKP(function (ready) {
+            if (!ready) {
+                fail('KP SOURCE TIMEOUT');
+                loading = false;
+                return;
+            }
+
+            searchKP(card, function (id) {
+                if (!id) {
+                    fail('KP ID NOT FOUND');
+                    loading = false;
+                    return;
+                }
+
+                loadSimilar(id, function (items) {
+                    items = prepare(items);
+                    if (!items.length) fail('NO KP SIMILAR RESULTS');
+                    else mount(root, items);
+                    loading = false;
+                });
+            });
+        });
+    }
+
+    function onFull(event) {
+        if (!event || event.type !== 'complite') return;
+        mounted = false;
+        loading = false;
+
+        var activity = event.object && event.object.activity;
+        var root = activity && typeof activity.render === 'function' && activity.render();
+        if (!root || !root.find) {
+            fail('FULL ROOT NOT FOUND');
+            return;
+        }
+
+        // The native recommendations row can arrive after the `complite` event,
+        // especially on TV hardware.  Never mount before it: KP must follow it.
+        waitFor(function () {
+            return insertionAnchor(root).length ? root : false;
+        }, function (readyRoot) {
+            if (!readyRoot) {
+                fail('INSERTION POINT TIMEOUT');
+                return;
+            }
+            start(event, readyRoot);
+        }, 30000);
+    }
+
+    if (window.__KP_RECOMMENDATIONS_160__) return;
+    window.__KP_RECOMMENDATIONS_160__ = true;
+
+    if (!Lampa.Listener || typeof Lampa.Listener.follow !== 'function') {
+        fail('Lampa.Listener.follow NOT FOUND');
+        return;
+    }
+
+    Lampa.Listener.follow('full', onFull);
+    log('READY');
+})();
