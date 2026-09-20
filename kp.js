@@ -1,8 +1,8 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.0.8';
-    var BUILD = '2026-09-20-17-55';
+    var VERSION = '1.0.9';
+    var BUILD = '2026-09-20-18-05';
     var PLUGIN = 'kp_recommendations_test';
 
     console.log('[KP UI] ========================================');
@@ -23,7 +23,7 @@
     };
 
     var KP_SOURCE_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=108';
+        'https://nb557.github.io/plugins/kp_source.js?v=109';
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
@@ -56,58 +56,52 @@
         var script =
             document.createElement('script');
 
-        script.src =
-            KP_SOURCE_URL;
+        script.src = KP_SOURCE_URL;
 
-        script.onload =
-            function () {
-                log('kp_source.js loaded');
+        script.onload = function () {
+            log('kp_source.js loaded');
 
-                var attempts = 0;
+            var attempts = 0;
 
-                var timer =
-                    setInterval(
-                        function () {
-                            attempts++;
+            var timer = setInterval(
+                function () {
+                    attempts++;
 
-                            if (
-                                window.kp_source_plugin &&
-                                Lampa.Api &&
-                                Lampa.Api.sources &&
-                                Lampa.Api.sources.KP
-                            ) {
-                                clearInterval(timer);
+                    if (
+                        window.kp_source_plugin &&
+                        Lampa.Api &&
+                        Lampa.Api.sources &&
+                        Lampa.Api.sources.KP
+                    ) {
+                        clearInterval(timer);
 
-                                log(
-                                    'KP source registered'
-                                );
+                        log(
+                            'KP source registered'
+                        );
 
-                                callback();
-                                return;
-                            }
+                        callback();
+                        return;
+                    }
 
-                            if (attempts >= 40) {
-                                clearInterval(timer);
+                    if (attempts >= 40) {
+                        clearInterval(timer);
 
-                                log(
-                                    'KP registration timeout'
-                                );
-                            }
-                        },
-                        250
-                    );
-            };
+                        log(
+                            'KP registration timeout'
+                        );
+                    }
+                },
+                250
+            );
+        };
 
-        script.onerror =
-            function () {
-                log(
-                    'ERROR loading kp_source.js'
-                );
-            };
+        script.onerror = function () {
+            log(
+                'ERROR loading kp_source.js'
+            );
+        };
 
-        document.head.appendChild(
-            script
-        );
+        document.head.appendChild(script);
     }
 
     function getCurrentCard(root) {
@@ -277,18 +271,25 @@
         return result;
     }
 
-    function getKpIdFromWikidata(imdbId, callback) {
+    function getKpIdFromWikidata(
+        imdbId,
+        callback
+    ) {
         log(
             'WIKIDATA LOOKUP IMDb:',
             imdbId
         );
 
+        /*
+         * P345  = IMDb ID
+         * P2603 = Kinopoisk film ID
+         */
         var query =
             'SELECT ?item ?kp WHERE {' +
             '?item wdt:P345 "' +
             String(imdbId).replace(/"/g, '') +
             '". ' +
-            '?item wdt:P1237 ?kp. ' +
+            '?item wdt:P2603 ?kp. ' +
             '} LIMIT 1';
 
         var url =
@@ -472,10 +473,7 @@
                 item.release_date
                     ? String(
                         item.release_date
-                    ).slice(
-                        0,
-                        4
-                    )
+                    ).slice(0, 4)
                     : ''
             )
         );
@@ -571,9 +569,7 @@
                 .append(
                     $(
                         '<div class="card__vote"></div>'
-                    ).text(
-                        vote
-                    )
+                    ).text(vote)
                 );
         }
 
@@ -650,9 +646,7 @@
         }
 
         var line =
-            createLine(
-                results
-            );
+            createLine(results);
 
         line.addClass(
             'kp-recommendations-line'
@@ -753,9 +747,7 @@
                 }
 
                 var card =
-                    getCurrentCard(
-                        root
-                    );
+                    getCurrentCard(root);
 
                 log(
                     'CURRENT CARD:',
@@ -763,19 +755,13 @@
                 );
 
                 var ids =
-                    extractIds(
-                        event
-                    );
+                    extractIds(event);
 
                 log(
                     'IDS FROM LAMPA:',
                     ids
                 );
 
-                /*
-                 * 1. Если Lampa уже дала KP ID —
-                 *    используем его напрямую.
-                 */
                 if (ids.kp) {
                     loadKP(
                         function () {
@@ -796,10 +782,6 @@
                     return;
                 }
 
-                /*
-                 * 2. Если есть IMDb —
-                 *    IMDb -> Wikidata -> KP.
-                 */
                 if (ids.imdb) {
                     log(
                         'IMDb FOUND:',
