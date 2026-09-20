@@ -25,6 +25,7 @@
             Lampa.Api.sources &&
             Lampa.Api.sources.KP
         ) {
+            log('KP already loaded');
             callback();
             return;
         }
@@ -94,6 +95,16 @@
             }
         }
 
+        // fallback
+        if (!year) {
+            var text = root.text();
+            var fallbackYear = text.match(/\b(19|20)\d{2}\b/);
+
+            if (fallbackYear) {
+                year = fallbackYear[0];
+            }
+        }
+
         return {
             title: title,
             year: year
@@ -123,7 +134,7 @@
 
         discovery.search(
             {
-                search: card.title,
+                keyword: card.title,
                 page: 1
             },
             function (result) {
@@ -140,7 +151,10 @@
 
                 var selected = null;
 
-                // 1. Название + год
+                // ------------------------------------------
+                // 1. Точное название + год
+                // ------------------------------------------
+
                 for (var i = 0; i < results.length; i++) {
                     var item = results[i];
 
@@ -155,7 +169,8 @@
                         '';
 
                     if (
-                        title.toLowerCase() === card.title.toLowerCase() &&
+                        title.toLowerCase() ===
+                            card.title.toLowerCase() &&
                         String(itemYear) === String(card.year)
                     ) {
                         selected = item;
@@ -163,7 +178,10 @@
                     }
                 }
 
-                // 2. Только название
+                // ------------------------------------------
+                // 2. Точное название
+                // ------------------------------------------
+
                 if (!selected) {
                     for (var j = 0; j < results.length; j++) {
                         var item2 = results[j];
@@ -183,7 +201,10 @@
                     }
                 }
 
+                // ------------------------------------------
                 // 3. Первый результат
+                // ------------------------------------------
+
                 if (!selected) {
                     selected = results[0];
                 }
@@ -192,7 +213,8 @@
                     'SELECTED:',
                     selected.title,
                     selected.year,
-                    selected.kinopoisk_id
+                    selected.kinopoisk_id,
+                    selected.kp_id
                 );
 
                 callback(selected);
@@ -225,6 +247,8 @@
                 }
             },
             function (json) {
+                log('KP FULL RESPONSE:', json);
+
                 if (
                     !json ||
                     !json.simular ||
@@ -248,7 +272,7 @@
     }
 
     // --------------------------------------------------
-    // DATA HELPERS
+    // DATA
     // --------------------------------------------------
 
     function getTitle(item) {
@@ -266,8 +290,11 @@
         return (
             item.year ||
             item.release_year ||
-            item.release_date ||
-            ''
+            (
+                item.release_date
+                    ? String(item.release_date).slice(0, 4)
+                    : ''
+            )
         );
     }
 
@@ -336,13 +363,13 @@
                 .attr('src', './img/img_broken.svg');
         }
 
-        if (vote) {
+        if (vote !== '' && vote !== null && vote !== undefined) {
             card.find('.card__view').append(
                 $('<div class="card__vote"></div>').text(vote)
             );
         }
 
-        // Пока только проверяем выбор
+        // Пока только тестируем выбор карточки
         card.on('hover:enter', function () {
             log(
                 'SELECT:',
@@ -487,7 +514,6 @@
             }
 
             loadKP(function () {
-
                 searchKP(card, function (selected) {
 
                     getKPFull(selected, function (results) {
@@ -500,7 +526,6 @@
                     });
 
                 });
-
             });
         });
 
