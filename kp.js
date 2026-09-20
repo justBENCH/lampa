@@ -1,8 +1,8 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.1.0';
-    var BUILD = '2026-09-20-18-15';
+    var VERSION = '1.1.1';
+    var BUILD = '2026-09-20-18-25';
     var PLUGIN = 'kp_recommendations_test';
 
     var START_TIME = performance.now();
@@ -27,20 +27,11 @@
         );
     }
 
-    console.log(
-        '[KP UI] VERSION:',
-        VERSION
-    );
-
-    console.log(
-        '[KP UI] BUILD:',
-        BUILD
-    );
-
-    console.log(
-        '[KP UI] START:',
-        new Date().toISOString()
-    );
+    console.log('[KP UI] ========================================');
+    console.log('[KP UI] VERSION:', VERSION);
+    console.log('[KP UI] BUILD:', BUILD);
+    console.log('[KP UI] START:', new Date().toISOString());
+    console.log('[KP UI] ========================================');
 
     if (
         window[PLUGIN] &&
@@ -50,7 +41,6 @@
             '[KP UI] ALREADY INSTALLED:',
             VERSION
         );
-
         return;
     }
 
@@ -59,7 +49,7 @@
     };
 
     var KP_SOURCE_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=110';
+        'https://nb557.github.io/plugins/kp_source.js?v=111';
 
     function loadKP(callback) {
         if (
@@ -69,79 +59,58 @@
             Lampa.Api.sources &&
             Lampa.Api.sources.KP
         ) {
-            log(
-                'KP already loaded'
-            );
-
+            log('KP ALREADY LOADED');
             callback();
-
             return;
         }
 
-        log(
-            'KP LOAD START'
-        );
+        log('KP LOAD START');
 
         var script =
             document.createElement('script');
 
-        script.src =
-            KP_SOURCE_URL;
+        script.src = KP_SOURCE_URL;
 
-        script.onload =
-            function () {
-                log(
-                    'kp_source.js NETWORK LOADED'
-                );
+        script.onload = function () {
+            log('KP SOURCE NETWORK LOADED');
 
-                var attempts = 0;
+            var attempts = 0;
 
-                var timer =
-                    setInterval(
-                        function () {
-                            attempts++;
+            var timer = setInterval(
+                function () {
+                    attempts++;
 
-                            if (
-                                window.kp_source_plugin &&
-                                Lampa.Api &&
-                                Lampa.Api.sources &&
-                                Lampa.Api.sources.KP
-                            ) {
-                                clearInterval(timer);
+                    if (
+                        window.kp_source_plugin &&
+                        Lampa.Api &&
+                        Lampa.Api.sources &&
+                        Lampa.Api.sources.KP
+                    ) {
+                        clearInterval(timer);
 
-                                log(
-                                    'KP SOURCE REGISTERED'
-                                );
+                        log('KP SOURCE REGISTERED');
 
-                                callback();
+                        callback();
+                        return;
+                    }
 
-                                return;
-                            }
+                    if (attempts >= 40) {
+                        clearInterval(timer);
 
-                            if (
-                                attempts >= 40
-                            ) {
-                                clearInterval(timer);
+                        log(
+                            'KP REGISTRATION TIMEOUT'
+                        );
+                    }
+                },
+                100
+            );
+        };
 
-                                log(
-                                    'KP REGISTRATION TIMEOUT'
-                                );
-                            }
-                        },
-                        100
-                    );
-            };
+        script.onerror = function () {
+            log('KP SOURCE LOAD ERROR');
+        };
 
-        script.onerror =
-            function () {
-                log(
-                    'KP SOURCE LOAD ERROR'
-                );
-            };
-
-        document.head.appendChild(
-            script
-        );
+        document.head.appendChild(script);
     }
 
     function getCurrentCard(root) {
@@ -153,9 +122,7 @@
                 '.full-start-new__title'
             );
 
-        if (
-            titleEl.length
-        ) {
+        if (titleEl.length) {
             title =
                 titleEl
                     .first()
@@ -168,9 +135,7 @@
                 '.full-start-new__head'
             );
 
-        if (
-            head.length
-        ) {
+        if (head.length) {
             var match =
                 head
                     .first()
@@ -179,30 +144,21 @@
                         /\b(19|20)\d{2}\b/
                     );
 
-            if (
-                match
-            ) {
-                year =
-                    match[0];
+            if (match) {
+                year = match[0];
             }
         }
 
-        if (
-            !year
-        ) {
-            var text =
-                root.text();
+        if (!year) {
+            var text = root.text();
 
             var fallback =
                 text.match(
                     /\b(19|20)\d{2}\b/
                 );
 
-            if (
-                fallback
-            ) {
-                year =
-                    fallback[0];
+            if (fallback) {
+                year = fallback[0];
             }
         }
 
@@ -212,10 +168,7 @@
         };
     }
 
-    function getValue(
-        object,
-        names
-    ) {
+    function getValue(object, names) {
         if (
             !object ||
             typeof object !== 'object'
@@ -232,9 +185,7 @@
 
             try {
                 value =
-                    object[
-                        names[i]
-                    ];
+                    object[names[i]];
             } catch (e) {
                 continue;
             }
@@ -279,18 +230,13 @@
             i < objects.length;
             i++
         ) {
-            var object =
-                objects[i];
+            var object = objects[i];
 
-            if (
-                !object
-            ) {
+            if (!object) {
                 continue;
             }
 
-            if (
-                !result.kp
-            ) {
+            if (!result.kp) {
                 result.kp =
                     getValue(
                         object,
@@ -303,9 +249,7 @@
                     );
             }
 
-            if (
-                !result.tmdb
-            ) {
+            if (!result.tmdb) {
                 result.tmdb =
                     getValue(
                         object,
@@ -318,9 +262,7 @@
                     );
             }
 
-            if (
-                !result.imdb
-            ) {
+            if (!result.imdb) {
                 result.imdb =
                     getValue(
                         object,
@@ -348,11 +290,7 @@
         var query =
             'SELECT ?item ?kp WHERE {' +
             '?item wdt:P345 "' +
-            String(imdbId)
-                .replace(
-                    /"/g,
-                    ''
-                ) +
+            String(imdbId).replace(/"/g, '') +
             '". ' +
             '?item wdt:P2603 ?kp. ' +
             '} LIMIT 1';
@@ -360,9 +298,7 @@
         var url =
             'https://query.wikidata.org/sparql' +
             '?query=' +
-            encodeURIComponent(
-                query
-            ) +
+            encodeURIComponent(query) +
             '&format=json';
 
         fetch(
@@ -382,9 +318,7 @@
                         response.status
                     );
 
-                    if (
-                        !response.ok
-                    ) {
+                    if (!response.ok) {
                         throw new Error(
                             'HTTP ' +
                             response.status
@@ -405,17 +339,12 @@
                             ? json.results.bindings
                             : [];
 
-                    if (
-                        !bindings.length
-                    ) {
+                    if (!bindings.length) {
                         log(
                             'WIKIDATA KP ID NOT FOUND'
                         );
 
-                        callback(
-                            null
-                        );
-
+                        callback(null);
                         return;
                     }
 
@@ -440,9 +369,7 @@
                         error
                     );
 
-                    callback(
-                        null
-                    );
+                    callback(null);
                 }
             );
     }
@@ -460,8 +387,7 @@
             {
                 card: {
                     source: 'KP',
-                    kinopoisk_id:
-                        kpId
+                    kinopoisk_id: kpId
                 }
             },
 
@@ -481,25 +407,17 @@
                         'KP SIMILAR DATA EMPTY'
                     );
 
-                    callback(
-                        []
-                    );
-
+                    callback([]);
                     return;
                 }
 
                 log(
                     'SIMILAR COUNT:',
-                    json
-                        .simular
-                        .results
-                        .length
+                    json.simular.results.length
                 );
 
                 callback(
-                    json
-                        .simular
-                        .results
+                    json.simular.results
                 );
             },
 
@@ -509,9 +427,7 @@
                     error
                 );
 
-                callback(
-                    []
-                );
+                callback([]);
             }
         );
     }
@@ -535,10 +451,7 @@
                 item.release_date
                     ? String(
                         item.release_date
-                    ).slice(
-                        0,
-                        4
-                    )
+                    ).slice(0, 4)
                     : ''
             )
         );
@@ -567,17 +480,10 @@
     }
 
     function createCard(item) {
-        var title =
-            getTitle(item);
-
-        var year =
-            getYear(item);
-
-        var poster =
-            getPoster(item);
-
-        var vote =
-            getVote(item);
+        var title = getTitle(item);
+        var year = getYear(item);
+        var poster = getPoster(item);
+        var vote = getVote(item);
 
         var card =
             $(
@@ -594,32 +500,17 @@
             );
 
         card
-            .find(
-                '.card__title'
-            )
-            .text(
-                title
-            );
+            .find('.card__title')
+            .text(title);
 
         card
-            .find(
-                '.card__age'
-            )
-            .text(
-                year
-            );
+            .find('.card__age')
+            .text(year);
 
-        if (
-            poster
-        ) {
+        if (poster) {
             card
-                .find(
-                    '.card__img'
-                )
-                .attr(
-                    'src',
-                    poster
-                )
+                .find('.card__img')
+                .attr('src', poster)
                 .on(
                     'error',
                     function () {
@@ -629,9 +520,7 @@
                 );
         } else {
             card
-                .find(
-                    '.card__img'
-                )
+                .find('.card__img')
                 .attr(
                     'src',
                     './img/img_broken.svg'
@@ -644,15 +533,11 @@
             vote !== undefined
         ) {
             card
-                .find(
-                    '.card__view'
-                )
+                .find('.card__view')
                 .append(
                     $(
                         '<div class="card__vote"></div>'
-                    ).text(
-                        vote
-                    )
+                    ).text(vote)
                 );
         }
 
@@ -671,58 +556,29 @@
     }
 
     function createLine() {
-        var line =
-            $(
-                '<div class="items-line layer--visible layer--render items-line--type-default kp-recommendations-line">' +
-                    '<div class="items-line__head">' +
-                        '<div class="items-line__title">' +
-                            'Рекомендации Кинопоиска' +
-                        '</div>' +
+        return $(
+            '<div class="items-line layer--visible layer--render items-line--type-default kp-recommendations-line">' +
+                '<div class="items-line__head">' +
+                    '<div class="items-line__title">' +
+                        'Рекомендации Кинопоиска' +
                     '</div>' +
-                    '<div class="items-line__body">' +
-                        '<div class="scroll scroll--horizontal">' +
-                            '<div class="scroll__content">' +
-                                '<div class="scroll__body mapping--line">' +
-                                '</div>' +
+                '</div>' +
+                '<div class="items-line__body">' +
+                    '<div class="scroll scroll--horizontal">' +
+                        '<div class="scroll__content">' +
+                            '<div class="scroll__body mapping--line">' +
                             '</div>' +
                         '</div>' +
                     '</div>' +
-                '</div>'
-            );
-
-        return line;
+                '</div>' +
+            '</div>'
+        );
     }
 
-    function showLoading(
-        root
+    function insertLine(
+        root,
+        line
     ) {
-        root
-            .find(
-                '.kp-recommendations-line'
-            )
-            .remove();
-
-        var line =
-            createLine();
-
-        line
-            .find(
-                '.items-line__title'
-            )
-            .text(
-                'Рекомендации Кинопоиска'
-            );
-
-        line
-            .find(
-                '.mapping--line'
-            )
-            .html(
-                '<div class="kp-loading">' +
-                    'Загрузка...' +
-                '</div>'
-            );
-
         var similarTitle =
             root
                 .find(
@@ -740,40 +596,110 @@
                 )
                 .first();
 
-        if (
-            similarTitle.length
-        ) {
+        if (similarTitle.length) {
             similarTitle
-                .closest(
-                    '.items-line'
-                )
-                .before(
-                    line
-                );
+                .closest('.items-line')
+                .before(line);
+
+            log(
+                'LINE INSERTED BEFORE ПОХОЖИЕ'
+            );
         } else {
-            root.append(
-                line
+            root.append(line);
+
+            log(
+                'LINE APPENDED TO ROOT'
             );
         }
+    }
+
+    function showLoading(root) {
+        root
+            .find(
+                '.kp-recommendations-line'
+            )
+            .remove();
+
+        var line = createLine();
+
+        line
+            .find(
+                '.mapping--line'
+            )
+            .html(
+                '<div class="kp-loading">Загрузка...</div>'
+            );
+
+        insertLine(
+            root,
+            line
+        );
 
         log(
-            'UI LOADING ROW INSERTED'
+            'LOADING ROW INSERTED'
         );
     }
 
     function renderResults(
-        root,
+        activity,
         results
     ) {
+        /*
+         * КРИТИЧНО:
+         * получаем СВЕЖИЙ root,
+         * а не используем старый root
+         * из момента открытия Full.
+         */
+        var root =
+            activity &&
+            typeof activity.render ===
+                'function'
+                ? activity.render()
+                : null;
+
+        log(
+            'FRESH ROOT:',
+            !!root
+        );
+
+        if (
+            !root ||
+            typeof root.find !==
+                'function'
+        ) {
+            log(
+                'FRESH ROOT INVALID'
+            );
+
+            return;
+        }
+
         var line =
             root.find(
                 '.kp-recommendations-line'
             );
 
-        if (
-            !line.length
-        ) {
-            return;
+        log(
+            'FRESH ROOT EXISTING LINE:',
+            line.length
+        );
+
+        /*
+         * Если строку Lampa успела удалить
+         * при своей перерисовке —
+         * создаём её заново.
+         */
+        if (!line.length) {
+            log(
+                'CREATING RESULT LINE AGAIN'
+            );
+
+            line = createLine();
+
+            insertLine(
+                root,
+                line
+            );
         }
 
         var body =
@@ -787,14 +713,6 @@
             !results ||
             !results.length
         ) {
-            line
-                .find(
-                    '.items-line__title'
-                )
-                .text(
-                    'Рекомендации Кинопоиска'
-                );
-
             body.html(
                 '<div class="kp-loading">' +
                     'Нет рекомендаций' +
@@ -811,9 +729,7 @@
         results.forEach(
             function (item) {
                 body.append(
-                    createCard(
-                        item
-                    )
+                    createCard(item)
                 );
             }
         );
@@ -821,6 +737,30 @@
         log(
             'UI RESULTS RENDERED:',
             results.length
+        );
+
+        /*
+         * Проверяем, реально ли строка
+         * находится в document.
+         */
+        var element =
+            line[0];
+
+        log(
+            'DOM CONNECTED:',
+            !!(
+                element &&
+                document.documentElement.contains(
+                    element
+                )
+            )
+        );
+
+        log(
+            'CARD DOM COUNT:',
+            body
+                .find('.card')
+                .length
         );
     }
 
@@ -834,9 +774,7 @@
             return false;
         }
 
-        if (
-            install.done
-        ) {
+        if (install.done) {
             return true;
         }
 
@@ -864,12 +802,15 @@
                 var eventStart =
                     performance.now();
 
+                var activity =
+                    event.object.activity;
+
                 log(
                     'FULL COMPLETE EVENT'
                 );
 
                 var root =
-                    event.object.activity.render();
+                    activity.render();
 
                 if (
                     !root ||
@@ -888,9 +829,7 @@
                 }
 
                 var card =
-                    getCurrentCard(
-                        root
-                    );
+                    getCurrentCard(root);
 
                 log(
                     'CURRENT CARD:',
@@ -898,9 +837,7 @@
                 );
 
                 var ids =
-                    extractIds(
-                        event
-                    );
+                    extractIds(event);
 
                 log(
                     'IDS FROM LAMPA:',
@@ -908,49 +845,38 @@
                 );
 
                 /*
-                 * Сразу показываем UI.
+                 * Показываем loading сразу.
                  */
-                showLoading(
-                    root
-                );
+                showLoading(root);
 
-                /*
-                 * KP source и Wikidata
-                 * запускаем параллельно.
-                 */
-                var kpReady =
-                    false;
+                var kpReady = false;
+                var wikidataReady = false;
 
-                var kpId =
+                var directKpId =
                     ids.kp || null;
-
-                var wikidataReady =
-                    false;
 
                 var wikidataKpId =
                     null;
 
                 function tryContinue() {
                     if (
-                        !wikidataReady ||
-                        !kpReady
+                        !kpReady ||
+                        !wikidataReady
                     ) {
                         return;
                     }
 
                     var finalKpId =
-                        kpId ||
+                        directKpId ||
                         wikidataKpId;
 
-                    if (
-                        !finalKpId
-                    ) {
+                    if (!finalKpId) {
                         log(
                             'NO KP ID'
                         );
 
                         renderResults(
-                            root,
+                            activity,
                             []
                         );
 
@@ -964,20 +890,17 @@
 
                     getKPFull(
                         finalKpId,
-                        function (
-                            results
-                        ) {
+                        function (results) {
                             log(
                                 'TOTAL PIPELINE:',
                                 Math.round(
                                     performance.now() -
                                     eventStart
-                                ) +
-                                'ms'
+                                ) + 'ms'
                             );
 
                             renderResults(
-                                root,
+                                activity,
                                 results
                             );
                         }
@@ -985,12 +908,11 @@
                 }
 
                 /*
-                 * KP source load.
+                 * KP source.
                  */
                 loadKP(
                     function () {
-                        kpReady =
-                            true;
+                        kpReady = true;
 
                         log(
                             'KP READY'
@@ -1003,14 +925,10 @@
                 /*
                  * IMDb -> Wikidata.
                  */
-                if (
-                    ids.imdb
-                ) {
+                if (ids.imdb) {
                     getKpIdFromWikidata(
                         ids.imdb,
-                        function (
-                            value
-                        ) {
+                        function (value) {
                             wikidataKpId =
                                 value;
 
@@ -1025,8 +943,7 @@
                         }
                     );
                 } else {
-                    wikidataReady =
-                        true;
+                    wikidataReady = true;
 
                     tryContinue();
                 }
@@ -1036,9 +953,7 @@
         return true;
     }
 
-    if (
-        !install()
-    ) {
+    if (!install()) {
         var attempts = 0;
 
         var timer =
@@ -1050,9 +965,7 @@
                         install() ||
                         attempts >= 120
                     ) {
-                        clearInterval(
-                            timer
-                        );
+                        clearInterval(timer);
                     }
                 },
                 500
