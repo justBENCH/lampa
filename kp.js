@@ -1,8 +1,8 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.0.5';
-    var BUILD = '2026-09-20-18-00';
+    var VERSION = '1.0.6';
+    var BUILD = '2026-09-20-18-10';
     var PLUGIN = 'kp_recommendations_test';
 
     console.log('[KP UI] ========================================');
@@ -19,14 +19,8 @@
         version: VERSION
     };
 
-    var KP_API =
-        'https://kinopoiskapiunofficial.tech/';
-
-    var KP_KEY =
-        '2a4a0808-81a3-40ae-b0d3-e11335ede616';
-
     var KP_SOURCE_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=105';
+        'https://nb557.github.io/plugins/kp_source.js?v=106';
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
@@ -50,9 +44,7 @@
             Lampa.Api.sources.KP
         ) {
             log('KP already loaded');
-
             callback();
-
             return;
         }
 
@@ -66,9 +58,7 @@
 
         script.onload =
             function () {
-                log(
-                    'kp_source.js loaded'
-                );
+                log('kp_source.js loaded');
 
                 var attempts = 0;
 
@@ -83,25 +73,18 @@
                                 Lampa.Api.sources &&
                                 Lampa.Api.sources.KP
                             ) {
-                                clearInterval(
-                                    timer
-                                );
+                                clearInterval(timer);
 
                                 log(
                                     'KP source registered'
                                 );
 
                                 callback();
-
                                 return;
                             }
 
-                            if (
-                                attempts >= 40
-                            ) {
-                                clearInterval(
-                                    timer
-                                );
+                            if (attempts >= 40) {
+                                clearInterval(timer);
 
                                 log(
                                     'KP registration timeout'
@@ -156,8 +139,7 @@
                     );
 
             if (match) {
-                year =
-                    match[0];
+                year = match[0];
             }
         }
 
@@ -171,8 +153,7 @@
                 );
 
             if (fallback) {
-                year =
-                    fallback[0];
+                year = fallback[0];
             }
         }
 
@@ -182,208 +163,167 @@
         };
     }
 
-    function searchKP(card, callback) {
-        var keyword =
-            encodeURIComponent(
-                card.title
-            );
+    /*
+     * Ищем именно KP ID.
+     * Никакие обычные id / tmdb id не принимаем.
+     */
+    function findKpId(object, path, visited) {
+        if (
+            object === null ||
+            object === undefined
+        ) {
+            return null;
+        }
 
-        var url =
-            KP_API +
-            'api/v2.1/films/search-by-keyword' +
-            '?keyword=' +
-            keyword +
-            '&page=1';
+        if (
+            typeof object !== 'object'
+        ) {
+            return null;
+        }
 
-        log(
-            'SEARCHING:',
-            card.title,
-            card.year
-        );
+        if (!visited) {
+            visited = [];
+        }
 
-        log(
-            'SEARCH URL:',
-            url
-        );
+        if (
+            visited.indexOf(object) !== -1
+        ) {
+            return null;
+        }
 
-        fetch(
-            url,
-            {
-                method: 'GET',
+        visited.push(object);
 
-                headers: {
-                    'X-API-KEY':
-                        KP_KEY
+        var keys;
+
+        try {
+            keys =
+                Object.keys(object);
+        } catch (e) {
+            return null;
+        }
+
+        for (
+            var i = 0;
+            i < keys.length;
+            i++
+        ) {
+            var key =
+                keys[i];
+
+            var value;
+
+            try {
+                value =
+                    object[key];
+            } catch (e2) {
+                continue;
+            }
+
+            var lower =
+                key.toLowerCase();
+
+            if (
+                lower === 'kinopoisk_id' ||
+                lower === 'kinopoiskid' ||
+                lower === 'kp_id' ||
+                lower === 'kpid'
+            ) {
+                if (
+                    value !== null &&
+                    value !== undefined &&
+                    String(value) !== ''
+                ) {
+                    log(
+                        'FOUND KP ID:',
+                        value,
+                        'PATH:',
+                        path + '.' + key
+                    );
+
+                    return value;
                 }
             }
-        )
-            .then(
-                function (response) {
-                    log(
-                        'SEARCH HTTP:',
-                        response.status,
-                        response.statusText
-                    );
+        }
 
-                    if (!response.ok) {
-                        throw new Error(
-                            'HTTP ' +
-                            response.status
-                        );
-                    }
+        for (
+            var j = 0;
+            j < keys.length;
+            j++
+        ) {
+            var key2 =
+                keys[j];
 
-                    return response.json();
-                }
-            )
-            .then(
-                function (json) {
-                    log(
-                        'SEARCH RESPONSE:',
-                        json
-                    );
+            var value2;
 
-                    var results =
-                        json &&
-                        Array.isArray(
-                            json.items
-                        )
-                            ? json.items
-                            : [];
+            try {
+                value2 =
+                    object[key2];
+            } catch (e3) {
+                continue;
+            }
 
-                    log(
-                        'SEARCH RESULTS:',
-                        results.length
-                    );
+            if (
+                !value2 ||
+                typeof value2 !== 'object'
+            ) {
+                continue;
+            }
 
-                    if (!results.length) {
-                        log(
-                            'No results'
-                        );
+            var result =
+                findKpId(
+                    value2,
+                    path + '.' + key2,
+                    visited
+                );
 
-                        return;
-                    }
+            if (result) {
+                return result;
+            }
+        }
 
-                    var selected =
-                        null;
-
-                    /*
-                     * Точное название + год.
-                     */
-                    for (
-                        var i = 0;
-                        i < results.length;
-                        i++
-                    ) {
-                        var item =
-                            results[i];
-
-                        var title =
-                            item.nameRu ||
-                            item.nameEn ||
-                            item.nameOriginal ||
-                            '';
-
-                        var itemYear =
-                            item.year ||
-                            '';
-
-                        if (
-                            title
-                                .toLowerCase() ===
-                                card.title
-                                    .toLowerCase() &&
-                            String(
-                                itemYear
-                            ) ===
-                                String(
-                                    card.year
-                                )
-                        ) {
-                            selected =
-                                item;
-
-                            break;
-                        }
-                    }
-
-                    /*
-                     * Только название.
-                     */
-                    if (!selected) {
-                        for (
-                            var j = 0;
-                            j < results.length;
-                            j++
-                        ) {
-                            var item2 =
-                                results[j];
-
-                            var title2 =
-                                item2.nameRu ||
-                                item2.nameEn ||
-                                item2.nameOriginal ||
-                                '';
-
-                            if (
-                                title2
-                                    .toLowerCase() ===
-                                    card.title
-                                        .toLowerCase()
-                            ) {
-                                selected =
-                                    item2;
-
-                                break;
-                            }
-                        }
-                    }
-
-                    /*
-                     * Первый результат.
-                     */
-                    if (!selected) {
-                        selected =
-                            results[0];
-                    }
-
-                    log(
-                        'SELECTED:',
-                        selected
-                    );
-
-                    callback(
-                        selected
-                    );
-                }
-            )
-            .catch(
-                function (error) {
-                    log(
-                        'SEARCH ERROR:',
-                        error
-                    );
-                }
-            );
+        return null;
     }
 
-    function getKPFull(
-        selected,
-        callback
-    ) {
-        var kpId =
-            selected.kinopoiskId ||
-            selected.kinopoisk_id ||
-            selected.kp_id ||
-            selected.id;
-
-        if (!kpId) {
+    /*
+     * Показываем структуру только верхнего уровня.
+     * Это позволит понять, где Lampa хранит movie/card.
+     */
+    function logObjectKeys(name, object) {
+        if (
+            !object ||
+            typeof object !== 'object'
+        ) {
             log(
-                'ERROR: No KP ID'
+                name + ':',
+                object
             );
 
             return;
         }
 
+        var keys = [];
+
+        try {
+            keys =
+                Object.keys(object);
+        } catch (e) {
+            log(
+                name + ': <cannot inspect>'
+            );
+
+            return;
+        }
+
+        log(
+            name + ' KEYS:',
+            keys
+        );
+    }
+
+    function getKPFull(
+        kpId,
+        callback
+    ) {
         log(
             'KINOPOSK ID:',
             kpId
@@ -647,9 +587,7 @@
         results.forEach(
             function (item) {
                 body.append(
-                    createCard(
-                        item
-                    )
+                    createCard(item)
                 );
             }
         );
@@ -798,35 +736,90 @@
                     card
                 );
 
-                if (!card.title) {
+                /*
+                 * Вот это сейчас главное.
+                 */
+                logObjectKeys(
+                    'EVENT OBJECT',
+                    event.object
+                );
+
+                logObjectKeys(
+                    'EVENT LINK',
+                    event.link
+                );
+
+                logObjectKeys(
+                    'ACTIVITY',
+                    event.object.activity
+                );
+
+                /*
+                 * Ищем KP ID во всём объекте события.
+                 */
+                var kpId =
+                    findKpId(
+                        event.object,
+                        'event.object'
+                    );
+
+                if (!kpId) {
+                    kpId =
+                        findKpId(
+                            event.link,
+                            'event.link'
+                        );
+                }
+
+                if (!kpId) {
+                    kpId =
+                        findKpId(
+                            event,
+                            'event'
+                        );
+                }
+
+                if (kpId) {
                     log(
-                        'Cannot detect title'
+                        'KP ID FOUND:',
+                        kpId
+                    );
+
+                    loadKP(
+                        function () {
+                            getKPFull(
+                                kpId,
+                                function (
+                                    results
+                                ) {
+                                    insertLine(
+                                        root,
+                                        results
+                                    );
+                                }
+                            );
+                        }
                     );
 
                     return;
                 }
 
-                loadKP(
-                    function () {
-                        searchKP(
-                            card,
-                            function (
-                                selected
-                            ) {
-                                getKPFull(
-                                    selected,
-                                    function (
-                                        results
-                                    ) {
-                                        insertLine(
-                                            root,
-                                            results
-                                        );
-                                    }
-                                );
-                            }
-                        );
-                    }
+                log(
+                    'NO KP ID FOUND IN LAMPA OBJECT'
+                );
+
+                log(
+                    'EVENT OBJECT FULL:',
+                    event.object
+                );
+
+                log(
+                    'EVENT LINK FULL:',
+                    event.link
+                );
+
+                log(
+                    'If KP ID is absent, this test stops here.'
                 );
             }
         );
