@@ -1,23 +1,14 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.0.2';
+    var VERSION = '1.0.3';
+    var BUILD = '2026-09-20-17-45';
     var PLUGIN = 'kp_recommendations_test';
 
-    console.log(
-        '[KP UI] ========================================'
-    );
-    console.log(
-        '[KP UI] VERSION:',
-        VERSION
-    );
-    console.log(
-        '[KP UI] BUILD:',
-        '2026-09-20-17-30'
-    );
-    console.log(
-        '[KP UI] ========================================'
-    );
+    console.log('[KP UI] ========================================');
+    console.log('[KP UI] VERSION:', VERSION);
+    console.log('[KP UI] BUILD:', BUILD);
+    console.log('[KP UI] ========================================');
 
     if (window[PLUGIN] && window[PLUGIN].version === VERSION) {
         console.log('[KP UI] ALREADY INSTALLED:', VERSION);
@@ -28,29 +19,64 @@
         version: VERSION
     };
 
-    var KP_URL =
-        'https://nb557.github.io/plugins/kp_source.js?v=102';
+    var KP_API = 'https://kinopoiskapiunofficial.tech/';
+    var KP_PROXY = 'https://cors.kp556.workers.dev:8443/';
+    var KP_KEY = '2a4a0808-81a3-40ae-b0d3-e11335ede616';
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
-
         args.unshift('[KP UI v' + VERSION + ']');
-
         console.log.apply(console, args);
     }
 
-    // ==================================================
-    // LOAD KP SOURCE
-    // ==================================================
+    function kpRequest(path, callback, onerror) {
+        var url = KP_PROXY + path;
 
-    function loadKP(callback) {
+        log('KP REQUEST:', url);
+
+        fetch(url, {
+            method: 'GET',
+            headers: {
+                'X-API-KEY': KP_KEY
+            }
+        })
+            .then(function (response) {
+                log(
+                    'KP HTTP:',
+                    response.status,
+                    response.statusText
+                );
+
+                if (!response.ok) {
+                    throw new Error(
+                        'HTTP ' + response.status
+                    );
+                }
+
+                return response.json();
+            })
+            .then(function (json) {
+                log('KP RESPONSE:', json);
+                callback(json);
+            })
+            .catch(function (error) {
+                log('KP REQUEST ERROR:', error);
+
+                if (onerror) {
+                    onerror(error);
+                }
+            });
+    }
+
+    function loadKPSource(callback) {
         if (
             window.kp_source_plugin &&
+            window.Lampa &&
             Lampa.Api &&
             Lampa.Api.sources &&
             Lampa.Api.sources.KP
         ) {
-            log('KP already loaded');
+            log('KP source already loaded');
             callback();
             return;
         }
@@ -59,7 +85,8 @@
 
         var script = document.createElement('script');
 
-        script.src = KP_URL;
+        script.src =
+            'https://nb557.github.io/plugins/kp_source.js?v=103';
 
         script.onload = function () {
             log('kp_source.js loaded');
@@ -86,9 +113,7 @@
                 if (attempts >= 40) {
                     clearInterval(timer);
 
-                    log(
-                        'KP registration timeout'
-                    );
+                    log('KP registration timeout');
                 }
             }, 250);
         };
@@ -99,10 +124,6 @@
 
         document.head.appendChild(script);
     }
-
-    // ==================================================
-    // CURRENT CARD
-    // ==================================================
 
     function getCurrentCard(root) {
         var title = '';
@@ -150,38 +171,15 @@
         };
     }
 
-    // ==================================================
-    // SEARCH KP
-    // ==================================================
-
     function searchKP(card, callback) {
-        var source =
-            Lampa.Api.sources.KP;
+        var keyword =
+            encodeURIComponent(card.title);
 
-        if (
-            !source ||
-            typeof source.discovery !== 'function'
-        ) {
-            log(
-                'ERROR: KP discovery unavailable'
-            );
-
-            return;
-        }
-
-        var discovery =
-            source.discovery();
-
-        if (
-            !discovery ||
-            typeof discovery.search !== 'function'
-        ) {
-            log(
-                'ERROR: KP search unavailable'
-            );
-
-            return;
-        }
+        var path =
+            'api/v2.1/films/search-by-keyword' +
+            '?keyword=' +
+            keyword +
+            '&page=1';
 
         log(
             'SEARCHING:',
@@ -189,29 +187,18 @@
             card.year
         );
 
-        var params = {
-            keyword: card.title,
-            search: card.title,
-            page: 1
-        };
-
         log(
-            'SEARCH PARAMS:',
-            params
+            'SEARCH URL:',
+            KP_PROXY + path
         );
 
-        discovery.search(
-            params,
-            function (result) {
-                log(
-                    'SEARCH RESPONSE:',
-                    result
-                );
-
+        kpRequest(
+            path,
+            function (json) {
                 var results =
-                    result &&
-                    result.results
-                        ? result.results
+                    json &&
+                    Array.isArray(json.items)
+                        ? json.items
                         : [];
 
                 log(
@@ -220,18 +207,11 @@
                 );
 
                 if (!results.length) {
-                    log(
-                        'No results'
-                    );
-
+                    log('No search results');
                     return;
                 }
 
                 var selected = null;
-
-                // ------------------------------------------
-                // EXACT TITLE + YEAR
-                // ------------------------------------------
 
                 for (
                     var i = 0;
@@ -241,13 +221,13 @@
                     var item = results[i];
 
                     var title =
-                        item.title ||
-                        item.name ||
+                        item.nameRu ||
+                        item.nameEn ||
+                        item.nameOriginal ||
                         '';
 
                     var itemYear =
                         item.year ||
-                        item.release_year ||
                         '';
 
                     if (
@@ -257,14 +237,9 @@
                             String(card.year)
                     ) {
                         selected = item;
-
                         break;
                     }
                 }
-
-                // ------------------------------------------
-                // EXACT TITLE
-                // ------------------------------------------
 
                 if (!selected) {
                     for (
@@ -275,8 +250,9 @@
                         var item2 = results[j];
 
                         var title2 =
-                            item2.title ||
-                            item2.name ||
+                            item2.nameRu ||
+                            item2.nameEn ||
+                            item2.nameOriginal ||
                             '';
 
                         if (
@@ -284,113 +260,81 @@
                             card.title.toLowerCase()
                         ) {
                             selected = item2;
-
                             break;
                         }
                     }
                 }
-
-                // ------------------------------------------
-                // FIRST RESULT
-                // ------------------------------------------
 
                 if (!selected) {
                     selected = results[0];
                 }
 
                 log(
-                    'SELECTED:',
+                    'SELECTED KP:',
                     selected
                 );
 
                 callback(selected);
+            },
+            function () {
+                log('SEARCH FAILED');
             }
         );
     }
 
-    // ==================================================
-    // KP FULL
-    // ==================================================
-
-    function getKPFull(selected, callback) {
+    function getKPSimilar(selected, callback) {
         var kpId =
+            selected.kinopoiskId ||
             selected.kinopoisk_id ||
             selected.kp_id ||
             selected.id;
 
         if (!kpId) {
-            log(
-                'ERROR: No KP ID'
-            );
-
+            log('ERROR: No KP ID');
             return;
         }
 
-        log(
-            'KINOPOSK ID:',
-            kpId
-        );
+        log('KINOPOSK ID:', kpId);
+
+        var path =
+            'api/v2.2/films/' +
+            kpId +
+            '/similars';
 
         log(
-            'Calling KP.full(...)'
+            'SIMILAR URL:',
+            KP_PROXY + path
         );
 
-        Lampa.Api.sources.KP.full(
-            {
-                card: {
-                    source: 'KP',
-                    kinopoisk_id: kpId
-                }
-            },
+        kpRequest(
+            path,
             function (json) {
-                log(
-                    'KP FULL RESPONSE:',
-                    json
-                );
-
-                if (
-                    !json ||
-                    !json.simular ||
-                    !Array.isArray(
-                        json.simular.results
-                    )
-                ) {
-                    log(
-                        'ERROR: No simular results'
-                    );
-
-                    return;
-                }
+                var results =
+                    json &&
+                    Array.isArray(json.items)
+                        ? json.items
+                        : [];
 
                 log(
                     'SIMILAR COUNT:',
-                    json.simular.results.length
+                    results.length
                 );
 
-                callback(
-                    json.simular.results
-                );
+                callback(results);
             },
-            function (error) {
-                log(
-                    'KP FULL ERROR:',
-                    error
-                );
+            function () {
+                log('SIMILAR REQUEST FAILED');
             }
         );
     }
 
-    // ==================================================
-    // DATA HELPERS
-    // ==================================================
-
     function getTitle(item) {
         return (
+            item.nameRu ||
+            item.nameEn ||
+            item.nameOriginal ||
             item.title ||
             item.name ||
-            item.nameRu ||
-            item.original_title ||
-            item.original_name ||
             'Без названия'
         );
     }
@@ -398,11 +342,10 @@
     function getYear(item) {
         return (
             item.year ||
-            item.release_year ||
             (
-                item.release_date
+                item.releaseDate
                     ? String(
-                        item.release_date
+                        item.releaseDate
                     ).slice(0, 4)
                     : ''
             )
@@ -411,29 +354,21 @@
 
     function getPoster(item) {
         return (
+            item.posterUrlPreview ||
+            item.posterUrl ||
             item.img ||
             item.poster ||
-            item.poster_path ||
-            item.poster_url ||
-            item.posterUrl ||
-            item.posterUrlPreview ||
             ''
         );
     }
 
     function getVote(item) {
         return (
-            item.vote ||
-            item.rating ||
-            item.rating_kp ||
             item.ratingKinopoisk ||
+            item.rating ||
             ''
         );
     }
-
-    // ==================================================
-    // CREATE CARD
-    // ==================================================
 
     function createCard(item) {
         var title =
@@ -450,20 +385,14 @@
 
         var card = $(
             '<div class="card selector layer--visible layer--render card--loaded">' +
-
                 '<div class="card__view">' +
-
                     '<img class="card__img">' +
-
                     '<div class="card__icons">' +
                         '<div class="card__icons-inner"></div>' +
                     '</div>' +
-
                 '</div>' +
-
                 '<div class="card__title"></div>' +
                 '<div class="card__age"></div>' +
-
             '</div>'
         );
 
@@ -514,7 +443,8 @@
                 log(
                     'SELECT:',
                     title,
-                    year
+                    year,
+                    item
                 );
             }
         );
@@ -522,60 +452,36 @@
         return card;
     }
 
-    // ==================================================
-    // CREATE NATIVE LAMPA LINE
-    // ==================================================
-
     function createLine(results) {
         var line = $(
             '<div class="items-line layer--visible layer--render items-line--type-default">' +
-
                 '<div class="items-line__head">' +
-
                     '<div class="items-line__title">' +
                         'Рекомендации Кинопоиска' +
                     '</div>' +
-
                 '</div>' +
-
                 '<div class="items-line__body">' +
-
                     '<div class="scroll scroll--horizontal">' +
-
                         '<div class="scroll__content">' +
-
                             '<div class="scroll__body mapping--line">' +
-
                             '</div>' +
-
                         '</div>' +
-
                     '</div>' +
-
                 '</div>' +
-
             '</div>'
         );
 
         var body =
-            line.find(
-                '.mapping--line'
-            );
+            line.find('.mapping--line');
 
-        results.forEach(
-            function (item) {
-                body.append(
-                    createCard(item)
-                );
-            }
-        );
+        results.forEach(function (item) {
+            body.append(
+                createCard(item)
+            );
+        });
 
         return line;
     }
-
-    // ==================================================
-    // INSERT BEFORE "ПОХОЖИЕ"
-    // ==================================================
 
     function insertLine(root, results) {
         root
@@ -586,10 +492,7 @@
             !results ||
             !results.length
         ) {
-            log(
-                'Nothing to render'
-            );
-
+            log('Nothing to render');
             return;
         }
 
@@ -602,19 +505,15 @@
 
         var similarTitle =
             root
-                .find(
-                    '.items-line__title'
-                )
-                .filter(
-                    function () {
-                        return (
-                            $(this)
-                                .text()
-                                .trim() ===
-                            'Похожие'
-                        );
-                    }
-                )
+                .find('.items-line__title')
+                .filter(function () {
+                    return (
+                        $(this)
+                            .text()
+                            .trim() ===
+                        'Похожие'
+                    );
+                })
                 .first();
 
         if (similarTitle.length) {
@@ -623,9 +522,7 @@
                     '.items-line'
                 );
 
-            similarLine.before(
-                line
-            );
+            similarLine.before(line);
 
             log(
                 'Inserted before "Похожие"'
@@ -638,14 +535,8 @@
             );
         }
 
-        log(
-            'KP UI RENDERED'
-        );
+        log('KP UI RENDERED');
     }
-
-    // ==================================================
-    // INSTALL
-    // ==================================================
 
     function install() {
         if (
@@ -663,17 +554,14 @@
 
         install.done = true;
 
-        log(
-            'PLUGIN INSTALLED'
-        );
+        log('PLUGIN INSTALLED');
 
         Lampa.Listener.follow(
             'full',
             function (event) {
                 if (
                     !event ||
-                    event.type !==
-                        'complite' ||
+                    event.type !== 'complite' ||
                     !event.object ||
                     !event.object.activity ||
                     typeof event.object.activity.render !==
@@ -713,18 +601,17 @@
                     log(
                         'Cannot detect title'
                     );
-
                     return;
                 }
 
-                loadKP(
+                loadKPSource(
                     function () {
                         searchKP(
                             card,
                             function (
                                 selected
                             ) {
-                                getKPFull(
+                                getKPSimilar(
                                     selected,
                                     function (
                                         results
@@ -745,10 +632,6 @@
         return true;
     }
 
-    // ==================================================
-    // WAIT FOR LAMPA
-    // ==================================================
-
     if (!install()) {
         var attempts = 0;
 
@@ -761,9 +644,7 @@
                         install() ||
                         attempts >= 120
                     ) {
-                        clearInterval(
-                            timer
-                        );
+                        clearInterval(timer);
                     }
                 },
                 500
