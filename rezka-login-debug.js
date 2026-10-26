@@ -1,4 +1,4 @@
-/* HDrezka Login Debug v1.0.0
+/* HDrezka Login Debug v1.1.0
  * Temporary diagnostic plugin for Online Mod. Remove it after the check.
  *
  * What it does (once per Lampa start, ~4 s after the app is ready):
@@ -6,6 +6,8 @@
  *      POST <mirror>/ajax/login/ with the login and password saved in Lampa.
  *   2. Shows the HTTP status and the first part of the server reply as a Lampa
  *      notification and prints the same to the browser console.
+ *   3. If the request fails with HTTP 0, probes the mirror with a plain
+ *      no-cors request to tell "site unreachable" from "blocked by CORS".
  *
  * The password is never shown or logged. Data is sent only to the mirror host
  * configured in Online Mod (https://kvk.zone when it is empty).
@@ -39,6 +41,27 @@
         }
     }
 
+    // A no-cors request succeeds (opaque response) whenever the host answers
+    // at all, so a pass here means the failure above was CORS, not the network.
+    function probe(host, cb) {
+        if (typeof window.fetch !== 'function') {
+            cb('fetch is not supported on this device');
+            return;
+        }
+        var finished = false;
+        function end(text) {
+            if (finished) return;
+            finished = true;
+            cb(text);
+        }
+        setTimeout(function () { end('no answer in 10 s'); }, 10000);
+        window.fetch(host + '/', {mode: 'no-cors', cache: 'no-store'}).then(function () {
+            end('site is reachable, so the login request was blocked by CORS');
+        }, function () {
+            end('site is NOT reachable from this device');
+        });
+    }
+
     function run() {
         var Lampa = window.Lampa;
         var host = mirror();
@@ -60,8 +83,13 @@
             var ms = Date.now() - started;
             var body = '';
             try { body = xhr.responseText; } catch (e) { body = ''; }
-            report(kind + ' | mirror: ' + host + ' | HTTP ' + xhr.status +
-                ' | ' + ms + ' ms | reply: ' + (short(body) || '(empty)'));
+            var text = kind + ' | mirror: ' + host + ' | HTTP ' + xhr.status +
+                ' | ' + ms + ' ms | reply: ' + (short(body) || '(empty)');
+            if (xhr.status === 0) {
+                probe(host, function (result) { report(text + ' | probe: ' + result); });
+            } else {
+                report(text);
+            }
         }
 
         xhr.open('POST', host + '/ajax/login/', true);
