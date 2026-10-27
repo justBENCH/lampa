@@ -1,4 +1,4 @@
-/* Online Mod Direct Play v1.5.0
+/* Online Mod Direct Play v1.6.0
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -29,6 +29,10 @@
  *    http) and answers RU/BY checks with that result; if the region cannot
  *    be determined, RU/BY checks answer "no" and the user's setting decides.
  *    A genuine RU/BY answer from the service keeps Lampa's behaviour.
+ * 8. Age confirmation that sticks. "I am 18 or older" stores
+ *    adult_content_view = true, but Lampa only applies it to its own keyword
+ *    check; films that TMDB itself marks adult keep the warning forever.
+ *    After confirmation the helper clears that mark when the card starts.
  *
  * Uses Lampa's existing buttons; no provider or player overrides.
  */
@@ -448,6 +452,23 @@
         return true;
     }
 
+    /* ---------- age confirmation ---------- */
+
+    function installAdultFix() {
+        var Lampa = window.Lampa;
+        if (!Lampa || !Lampa.Storage || !Lampa.Listener || typeof Lampa.Listener.follow !== 'function') return false;
+
+        // Lampa sends "start" after setting data.movie.adult and before it
+        // builds the description block that shows the warning.
+        Lampa.Listener.follow('full', function (event) {
+            if (!event || event.type !== 'start' || !event.data || !event.data.movie) return;
+            if (Lampa.Storage.field('adult_content_view') === true && event.data.movie.adult) {
+                event.data.movie.adult = false;
+            }
+        });
+        return true;
+    }
+
     /* ---------- start ---------- */
 
     // Lampa and Online Mod finish loading on their own schedule, so each part
@@ -463,4 +484,5 @@
     retry(installDirectPlay);
     retry(installRezkaLogin);
     retry(installRegionFix);
+    retry(installAdultFix);
 }());
