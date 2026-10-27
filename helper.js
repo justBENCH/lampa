@@ -1,11 +1,26 @@
-/* Online Mod Direct Play v1.1.2
+/* Online Mod Direct Play v1.2.0
  * Install alongside https://nb557.github.io/plugins/online_mod.js
- * Uses Lampa's existing source button; no provider or player overrides.
+ *
+ * 1. Play opens Online Mod directly, skipping the "Source" menu.
+ * 2. The native Trailers button is moved right after Play.
+ * 3. HDrezka login through your own proxy. Online Mod's "Log in to HDrezka"
+ *    button posts straight to <mirror>/ajax/login/, which browsers and web
+ *    views (lampa.mx, Media Station X, TV browsers) block by CORS. When Online
+ *    Mod's alternative proxy is set (online_mod_proxy_other +
+ *    online_mod_proxy_other_url), the same button and its status dot log in
+ *    through that proxy instead, store the session cookies and switch Online
+ *    Mod's HDrezka proxy on. "Log out of HDrezka" then clears those cookies.
+ *    On Android, or with no alternative proxy set, both buttons keep Online
+ *    Mod's original behaviour. No third-party proxy is ever used.
+ *
+ * Uses Lampa's existing buttons; no provider or player overrides.
  */
 (function () {
     'use strict';
 
-    function install() {
+    var TAG = '[Online Mod Direct Play]';
+
+    function installDirectPlay() {
         var Lampa = window.Lampa;
         if (!Lampa || !Lampa.Select || !Lampa.Lang ||
             !Lampa.Listener || typeof Lampa.Listener.follow !== 'function') return false;
@@ -56,10 +71,269 @@
         return true;
     }
 
-    if (!install()) {
+    /* ---------- HDrezka login through the user's own proxy ---------- */
+
+    var REZKA_COMPONENT = 'online_mod_rezka2';
+    var REZKA_LOGIN = 'online_mod_rezka2_login';
+    var REZKA_LOGOUT = 'online_mod_rezka2_logout';
+    var REZKA_COOKIE = 'online_mod_rezka2_cookie';
+    var REZKA_STATUS = 'online_mod_rezka2_status';
+    // Same value as Utils.baseUserAgent() in Online Mod.
+    var USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+        '(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36';
+
+    function storage() {
+        return window.Lampa.Storage;
+    }
+
+    function notify(text) {
+        window.Lampa.Noty.show(text);
+    }
+
+    // Same rules as Utils.rezka2Mirror() in Online Mod.
+    function rezkaMirror() {
+        var url = String(storage().get('online_mod_rezka2_mirror', '') || '');
+        if (!url) return 'https://kvk.zone';
+        if (url.indexOf('http') !== 0) url = 'https://' + url;
+        return url.replace(/\/+$/, '');
+    }
+
+    // Only Online Mod's alternative proxy (the user's own) is used; there is
+    // deliberately no fallback to a third-party proxy.
+    function ownProxy() {
+        if (storage().field('online_mod_proxy_other') !== true) return '';
+        var url = String(storage().field('online_mod_proxy_other_url') || '').trim();
+        if (!/^https?:\/\/[^\/]/.test(url)) return '';
+        return url.charAt(url.length - 1) === '/' ? url : url + '/';
+    }
+
+    function useOwnLogin() {
+        var Lampa = window.Lampa;
+        var android = Lampa.Platform && typeof Lampa.Platform.is === 'function' &&
+            Lampa.Platform.is('android');
+        return !android && !!ownProxy();
+    }
+
+    // Online Mod's proxyLink(link, proxy, enc, 'enc2t').
+    function proxyLink(link, proxy, enc) {
+        var posEnd = link.lastIndexOf('?');
+        var posStart = link.lastIndexOf('://');
+        if (posEnd === -1 || posEnd <= posStart) posEnd = link.length;
+        if (posStart === -1) posStart = -3;
+        var name = link.substring(posStart + 3, posEnd);
+        posStart = name.lastIndexOf('/');
+        name = posStart !== -1 ? name.substring(posStart + 1) : '';
+        return proxy + 'enc2/' + encodeURIComponent(btoa(enc + link)) + '/' + name + '?jacred.test';
+    }
+
+    function parseJson(value) {
+        if (typeof value !== 'string') return value || {};
+        try {
+            return JSON.parse(value);
+        } catch (e) {
+            return {};
+        }
+    }
+
+    // The site returns the error either as a string or as {field: text}.
+    function messageText(message) {
+        if (!message) return '';
+        if (typeof message === 'string') return message;
+        var parts = [];
+        for (var key in message) {
+            if (Object.prototype.hasOwnProperty.call(message, key) && message[key]) {
+                parts.push(String(message[key]));
+            }
+        }
+        return parts.join('; ');
+    }
+
+    function collectCookies(headers) {
+        var list = headers && (headers['set-cookie'] || headers['Set-Cookie']);
+        if (!list) return '';
+        if (typeof list === 'string') list = [list];
+        if (!list.forEach) return '';
+
+        var values = {};
+        var order = [];
+        list.forEach(function (line) {
+            var parts = String(line).split(';')[0].split('=');
+            var key = parts.shift();
+            var value = parts.join('=');
+            if (!key) return;
+            if (value === 'deleted') {
+                delete values[key];
+                return;
+            }
+            if (!(key in values)) order.push(key);
+            values[key] = value || '';
+        });
+
+        // Online Mod keeps PHPSESSID out of the stored value and adds its own.
+        var cookies = [];
+        order.forEach(function (key) {
+            if (key !== 'PHPSESSID' && key in values) cookies.push(key + '=' + values[key]);
+        });
+        return cookies.join('; ');
+    }
+
+    function proxyRequest(method, link, enc, body, done) {
+        var xhr = new XMLHttpRequest();
+        var finished = false;
+
+        function end(error, json) {
+            if (finished) return;
+            finished = true;
+            done(error, json);
+        }
+
+        xhr.open(method, proxyLink(link, ownProxy(), enc), true);
+        xhr.timeout = 15000;
+        if (body) xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+        xhr.onerror = function () { end('прокси недоступен (сеть)'); };
+        xhr.ontimeout = function () { end('прокси не ответил за 15 с'); };
+        xhr.onload = function () {
+            if (xhr.status !== 200) end('прокси вернул HTTP ' + xhr.status);
+            else end(null, parseJson(xhr.responseText));
+        };
+        xhr.send(body || null);
+    }
+
+    function rezkaLogin(success, error) {
+        var name = String(storage().get('online_mod_rezka2_name', '') || '');
+        var pass = String(storage().get('online_mod_rezka2_password', '') || '');
+        if (!name || !pass) {
+            notify('HDrezka: укажите логин и пароль');
+            error();
+            return;
+        }
+
+        var enc = 'param/User-Agent=' + encodeURIComponent(USER_AGENT) + '/cookie_plus/param/Cookie=/';
+        var body = 'login_name=' + encodeURIComponent(name) +
+            '&login_password=' + encodeURIComponent(pass) + '&login_not_save=0';
+
+        proxyRequest('POST', rezkaMirror() + '/ajax/login/', enc, body, function (failure, json) {
+            if (failure) {
+                notify('HDrezka: ' + failure);
+                error();
+                return;
+            }
+
+            var reply = parseJson(json.body);
+            if (!reply.success) {
+                storage().set(REZKA_STATUS, 'false');
+                notify('HDrezka: ' + (messageText(reply.message) || 'сайт не принял вход'));
+                error();
+                return;
+            }
+
+            var cookies = collectCookies(json.headers);
+            if (!cookies) {
+                notify('HDrezka: вход принят, но сайт не вернул куки');
+                error();
+                return;
+            }
+
+            storage().set(REZKA_COOKIE, cookies);
+            storage().set(REZKA_STATUS, 'true');
+            // Outside Android Online Mod sends the stored cookies only through
+            // its HDrezka proxy, and only to the mirror when this flag is on.
+            storage().set('online_mod_proxy_rezka2', 'true');
+            storage().set('online_mod_proxy_rezka2_mirror', 'true');
+            notify('HDrezka: вход выполнен. Перезапустите Lampa.');
+            success();
+        });
+    }
+
+    function rezkaLogout(success) {
+        var cookies = String(storage().get(REZKA_COOKIE, '') || '');
+        storage().set(REZKA_COOKIE, '');
+        storage().set(REZKA_STATUS, 'false');
+        notify('HDrezka: выход выполнен');
+        success();
+
+        // Best effort: also end the session on the site. The result does not
+        // matter, the local cookies are already gone.
+        if (cookies && ownProxy()) {
+            var enc = 'param/User-Agent=' + encodeURIComponent(USER_AGENT) + '/' +
+                'param/Cookie=' + encodeURIComponent(cookies) + '/';
+            proxyRequest('GET', rezkaMirror() + '/logout/', enc, null, function () {});
+        }
+    }
+
+    function setStatus(item, state) {
+        if (!item) return;
+        $('.settings-param__status', item).removeClass('active error wait').addClass(state);
+    }
+
+    // Wraps one Online Mod button: keeps its onRender (which adds the status
+    // dot), and replaces onChange only while our login applies.
+    function patchButton(param, action, showLoggedIn) {
+        if (!param || param.onlineModDirectPlay) return;
+        var originalRender = param.onRender;
+        var originalChange = param.onChange;
+        var item = null;
+
+        param.onRender = function (element) {
+            item = element;
+            if (typeof originalRender === 'function') originalRender.apply(this, arguments);
+            if (showLoggedIn && useOwnLogin() && storage().get(REZKA_STATUS, '') === 'true' &&
+                storage().get(REZKA_COOKIE, '')) {
+                setStatus(item, 'active');
+            }
+        };
+
+        param.onChange = function () {
+            if (!useOwnLogin()) {
+                if (typeof originalChange === 'function') return originalChange.apply(this, arguments);
+                return;
+            }
+            setStatus(item, 'wait');
+            action(function () {
+                setStatus(item, 'active');
+            }, function () {
+                setStatus(item, 'error');
+            });
+        };
+
+        param.onlineModDirectPlay = true;
+    }
+
+    function installRezkaLogin() {
+        var Lampa = window.Lampa;
+        if (!window.appready || !Lampa || !Lampa.Storage || !Lampa.Noty ||
+            !Lampa.SettingsApi || typeof Lampa.SettingsApi.getParam !== 'function') return false;
+
+        var params = Lampa.SettingsApi.getParam(REZKA_COMPONENT);
+        if (!Array.isArray(params) || !params.length) return false;
+
+        var login = null;
+        var logout = null;
+        params.forEach(function (param) {
+            var name = param && param.param && param.param.name;
+            if (name === REZKA_LOGIN) login = param;
+            if (name === REZKA_LOGOUT) logout = param;
+        });
+        if (!login) return false;
+
+        patchButton(login, rezkaLogin, true);
+        if (logout) patchButton(logout, rezkaLogout, false);
+        console.log(TAG, 'HDrezka login patched');
+        return true;
+    }
+
+    /* ---------- start ---------- */
+
+    // Lampa and Online Mod finish loading on their own schedule, so each part
+    // retries until its API is ready (up to 2 minutes).
+    function retry(install) {
+        if (install()) return;
         var attempts = 0;
         var timer = setInterval(function () {
-            if (install() || ++attempts >= 120) clearInterval(timer);
+            if (install() || ++attempts >= 240) clearInterval(timer);
         }, 500);
     }
+
+    retry(installDirectPlay);
+    retry(installRezkaLogin);
 }());
