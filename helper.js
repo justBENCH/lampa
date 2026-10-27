@@ -1,4 +1,4 @@
-/* Online Mod Direct Play v1.2.0
+/* Online Mod Direct Play v1.3.0
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -12,6 +12,9 @@
  *    Mod's HDrezka proxy on. "Log out of HDrezka" then clears those cookies.
  *    On Android, or with no alternative proxy set, both buttons keep Online
  *    Mod's original behaviour. No third-party proxy is ever used.
+ * 4. HDrezka mirror is fixed to kvk.zone: rezka.ag and hdrezka.ag are behind
+ *    an Anubis bot check, kvk.zone is not. The "HDrezka mirror" field is
+ *    removed from Online Mod's settings and the value is set on every start.
  *
  * Uses Lampa's existing buttons; no provider or player overrides.
  */
@@ -74,6 +77,10 @@
     /* ---------- HDrezka login through the user's own proxy ---------- */
 
     var REZKA_COMPONENT = 'online_mod_rezka2';
+    var REZKA_MIRROR_PARAM = 'online_mod_rezka2_mirror';
+    // rezka.ag and hdrezka.ag answer every URL, login included, with an Anubis
+    // bot check; kvk.zone does not (checked 27.10.2026).
+    var REZKA_MIRROR = 'kvk.zone';
     var REZKA_LOGIN = 'online_mod_rezka2_login';
     var REZKA_LOGOUT = 'online_mod_rezka2_logout';
     var REZKA_COOKIE = 'online_mod_rezka2_cookie';
@@ -90,12 +97,17 @@
         window.Lampa.Noty.show(text);
     }
 
-    // Same rules as Utils.rezka2Mirror() in Online Mod.
     function rezkaMirror() {
-        var url = String(storage().get('online_mod_rezka2_mirror', '') || '');
-        if (!url) return 'https://kvk.zone';
-        if (url.indexOf('http') !== 0) url = 'https://' + url;
-        return url.replace(/\/+$/, '');
+        return 'https://' + REZKA_MIRROR;
+    }
+
+    // Online Mod reads the mirror from storage for every HDrezka request, so
+    // the fixed mirror is written there. With its HDrezka proxy on, Online Mod
+    // uses the mirror only when online_mod_proxy_rezka2_mirror is on;
+    // otherwise it falls back to rezka.ag.
+    function forceMirror() {
+        if (storage().get(REZKA_MIRROR_PARAM, '') !== REZKA_MIRROR) storage().set(REZKA_MIRROR_PARAM, REZKA_MIRROR);
+        if (storage().field('online_mod_proxy_rezka2_mirror') !== true) storage().set('online_mod_proxy_rezka2_mirror', 'true');
     }
 
     // Only Online Mod's alternative proxy (the user's own) is used; there is
@@ -315,6 +327,13 @@
             if (name === REZKA_LOGOUT) logout = param;
         });
         if (!login) return false;
+
+        forceMirror();
+        // getParam returns Lampa's own list, so removing the entry hides the
+        // field everywhere the settings are built.
+        for (var i = params.length - 1; i >= 0; i--) {
+            if (params[i] && params[i].param && params[i].param.name === REZKA_MIRROR_PARAM) params.splice(i, 1);
+        }
 
         patchButton(login, rezkaLogin, true);
         if (logout) patchButton(logout, rezkaLogout, false);
