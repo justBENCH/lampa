@@ -1,4 +1,4 @@
-/* Online Mod Direct Play v1.3.0
+/* Online Mod Direct Play v1.3.1
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -15,6 +15,10 @@
  * 4. HDrezka mirror is fixed to kvk.zone: rezka.ag and hdrezka.ag are behind
  *    an Anubis bot check, kvk.zone is not. The "HDrezka mirror" field is
  *    removed from Online Mod's settings and the value is set on every start.
+ * 5. Online Mod switches its HDrezka proxy off on every start (initStorage,
+ *    outside debug mode). While the alternative proxy is set, it is switched
+ *    back on right after that, otherwise every HDrezka request goes direct and
+ *    fails with "no network connection".
  *
  * Uses Lampa's existing buttons; no provider or player overrides.
  */
@@ -329,6 +333,8 @@
         if (!login) return false;
 
         forceMirror();
+        // Runs after Online Mod's initStorage(), which resets this flag.
+        if (useOwnLogin()) storage().set('online_mod_proxy_rezka2', 'true');
         // getParam returns Lampa's own list, so removing the entry hides the
         // field everywhere the settings are built.
         for (var i = params.length - 1; i >= 0; i--) {
