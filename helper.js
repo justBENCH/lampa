@@ -1,4 +1,4 @@
-/* Online Mod Direct Play v1.6.2
+/* Online Mod Direct Play v1.7.0
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -29,6 +29,10 @@
  *    http) and answers RU/BY checks with that result; if the region cannot
  *    be determined, RU/BY checks answer "no" and the user's setting decides.
  *    A genuine RU/BY answer from the service keeps Lampa's behaviour.
+ *    Both of Lampa's LGBT checks (keywords and the cub list) also need
+ *    window.lampa_settings.lgbt, so outside RU/BY the helper hides that list
+ *    unless the user turned "Block LGBT content" on. The toggle itself, which
+ *    Lampa hides when it believes the region is RU/BY, is added back.
  * 8. Age confirmation that sticks. "I am 18 or older" stores
  *    adult_content_view = true, but Lampa only applies it to its own keyword
  *    check; films that TMDB itself marks adult keep the warning forever.
@@ -396,6 +400,7 @@
             if (index >= urls.length) {
                 geoFinished = true;
                 console.log(TAG, 'region unknown, RU/BY checks follow the user setting');
+                addLgbtToggle();
                 return;
             }
             var xhr = new XMLHttpRequest();
@@ -422,6 +427,7 @@
                     geoRegion = code;
                     geoFinished = true;
                     console.log(TAG, 'region', code);
+                    addLgbtToggle();
                 } else {
                     next();
                 }
@@ -430,6 +436,51 @@
         }
 
         attempt(0);
+    }
+
+    function regionAllowsLgbt() {
+        if (!geoFinished) return null;           // not known yet
+        return geoRegion !== 'ru' && geoRegion !== 'by';
+    }
+
+    // Lampa reads window.lampa_settings.lgbt (a map of blocked ids) in both
+    // checks and only blocks when it is set. Hide it while the user's region
+    // and setting allow LGBT content; keep whatever Lampa stores in it.
+    function guardLgbtList() {
+        var settings = window.lampa_settings;
+        if (!settings || settings.__onlineModLgbtGuard) return;
+        var stored = settings.lgbt;
+        try {
+            Object.defineProperty(settings, 'lgbt', {
+                configurable: true,
+                enumerable: true,
+                get: function () {
+                    var allowed = regionAllowsLgbt();
+                    if (allowed === true && window.Lampa.Storage.field('lgbt_content_block') !== true) return null;
+                    return stored;
+                },
+                set: function (value) { stored = value; }
+            });
+            settings.__onlineModLgbtGuard = true;
+        } catch (e) {
+            console.log(TAG, 'cannot guard lampa_settings.lgbt', e);
+        }
+    }
+
+    // Lampa adds this toggle only when it thinks the region is not RU/BY.
+    function addLgbtToggle() {
+        var Lampa = window.Lampa;
+        if (regionAllowsLgbt() !== true || !Lampa.SettingsApi || typeof Lampa.SettingsApi.getParam !== 'function' ||
+            typeof Lampa.SettingsApi.addParam !== 'function') return;
+        var params = Lampa.SettingsApi.getParam('more') || [];
+        for (var i = 0; i < params.length; i++) {
+            if (params[i] && params[i].param && params[i].param.name === 'lgbt_content_block') return;
+        }
+        Lampa.SettingsApi.addParam({
+            component: 'more',
+            param: {name: 'lgbt_content_block', type: 'trigger', 'default': false},
+            field: {name: Lampa.Lang.translate('settings_lgbt_content_block')}
+        });
     }
 
     function installRegionFix() {
@@ -449,6 +500,7 @@
         patchedIs.onlineModDirectPlay = true;
         // Lampa's own modules call this same object (exported as Lampa.VPN).
         Lampa.VPN.is = patchedIs;
+        guardLgbtList();
         probeRegion();
         return true;
     }
