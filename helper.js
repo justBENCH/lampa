@@ -1,4 +1,4 @@
-/* Online Mod Direct Play v1.4.0
+/* Online Mod Direct Play v1.5.0
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -22,6 +22,13 @@
  * 6. Outside Android the alternative proxy itself is set on every start:
  *    "Use alternative proxy" = on and the URL below. Online Mod also routes
  *    Filmix site requests through it, so the proxy must allow filmix.gg.
+ * 7. Region fallback. Lampa asks geo.<cub_domain> for the country and, when
+ *    that request fails or returns garbage, assumes "ru". Its LGBT block
+ *    (Lampa.VPN.is(['ru', 'by'])) then hides films regardless of the user's
+ *    "allow" setting. The helper asks the same service itself (https, then
+ *    http) and answers RU/BY checks with that result; if the region cannot
+ *    be determined, RU/BY checks answer "no" and the user's setting decides.
+ *    A genuine RU/BY answer from the service keeps Lampa's behaviour.
  *
  * Uses Lampa's existing buttons; no provider or player overrides.
  */
@@ -366,6 +373,81 @@
         return true;
     }
 
+    /* ---------- region fallback ---------- */
+
+    var geoRegion = null;      // two-letter code from our own probe, or null
+    var geoFinished = false;   // our probe has ended (with or without a code)
+
+    function probeRegion() {
+        var Lampa = window.Lampa;
+        var domain = Lampa.Manifest && Lampa.Manifest.cub_domain;
+        if (!domain) {
+            geoFinished = true;
+            return;
+        }
+        var urls = ['https://geo.' + domain, 'http://geo.' + domain];
+
+        function attempt(index) {
+            if (index >= urls.length) {
+                geoFinished = true;
+                console.log(TAG, 'region unknown, RU/BY checks follow the user setting');
+                return;
+            }
+            var xhr = new XMLHttpRequest();
+            var done = false;
+            function next() {
+                if (done) return;
+                done = true;
+                attempt(index + 1);
+            }
+            try {
+                xhr.open('GET', urls[index], true);
+            } catch (e) {
+                next();
+                return;
+            }
+            xhr.timeout = 8000;
+            xhr.onerror = next;
+            xhr.ontimeout = next;
+            xhr.onload = function () {
+                var code = String(xhr.responseText || '').trim().toLowerCase();
+                if (xhr.status === 200 && /^[a-z]{2}$/.test(code)) {
+                    if (done) return;
+                    done = true;
+                    geoRegion = code;
+                    geoFinished = true;
+                    console.log(TAG, 'region', code);
+                } else {
+                    next();
+                }
+            };
+            xhr.send();
+        }
+
+        attempt(0);
+    }
+
+    function installRegionFix() {
+        var Lampa = window.Lampa;
+        if (!Lampa || !Lampa.VPN || typeof Lampa.VPN.is !== 'function' || !Lampa.Manifest) return false;
+        if (Lampa.VPN.is.onlineModDirectPlay) return true;
+
+        var originalIs = Lampa.VPN.is;
+        var patchedIs = function (list) {
+            var asksRuBy = Array.isArray(list) && (list.indexOf('ru') !== -1 || list.indexOf('by') !== -1);
+            if (asksRuBy && geoFinished) {
+                if (geoRegion) return list.indexOf(geoRegion) !== -1;
+                return false;
+            }
+            return originalIs.apply(this, arguments);
+        };
+        patchedIs.onlineModDirectPlay = true;
+        // Lampa's own modules call this same object (exported as Lampa.VPN).
+        Lampa.VPN.is = patchedIs;
+        probeRegion();
+        return true;
+    }
+
     /* ---------- start ---------- */
 
     // Lampa and Online Mod finish loading on their own schedule, so each part
@@ -380,4 +462,5 @@
 
     retry(installDirectPlay);
     retry(installRezkaLogin);
+    retry(installRegionFix);
 }());
