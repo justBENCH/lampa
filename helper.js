@@ -1,4 +1,4 @@
-/* Online Mod Direct Play v1.7.0
+/* Online Mod Direct Play v1.7.1
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -467,8 +467,17 @@
         }
     }
 
-    // Lampa adds this toggle only when it thinks the region is not RU/BY.
+    // Lampa adds this toggle at start-up only when it thinks the region is not
+    // RU/BY. Check after the app is ready so its own toggle is not doubled.
     function addLgbtToggle() {
+        if (!window.appready) {
+            setTimeout(addLgbtToggle, 1000);
+            return;
+        }
+        setTimeout(addLgbtToggleNow, 3000);
+    }
+
+    function addLgbtToggleNow() {
         var Lampa = window.Lampa;
         if (regionAllowsLgbt() !== true || !Lampa.SettingsApi || typeof Lampa.SettingsApi.getParam !== 'function' ||
             typeof Lampa.SettingsApi.addParam !== 'function') return;
