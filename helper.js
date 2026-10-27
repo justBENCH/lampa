@@ -1,4 +1,4 @@
-/* Online Mod Direct Play v1.6.0
+/* Online Mod Direct Play v1.6.1
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -40,6 +40,10 @@
     'use strict';
 
     var TAG = '[Online Mod Direct Play]';
+    var VERSION = '1.6.1';
+    // TEMPORARY: shows the region diagnosis once per start. Remove after the
+    // phone check.
+    var DEBUG_REGION = true;
 
     function installDirectPlay() {
         var Lampa = window.Lampa;
@@ -382,6 +386,18 @@
     var geoRegion = null;      // two-letter code from our own probe, or null
     var geoFinished = false;   // our probe has ended (with or without a code)
 
+    function reportRegion() {
+        if (!DEBUG_REGION) return;
+        var Lampa = window.Lampa;
+        var lampaCode = '';
+        try { lampaCode = Lampa.VPN.code(); } catch (e) { lampaCode = '?'; }
+        var text = 'Хелпер ' + VERSION + ' | регион Lampa: ' + (lampaCode || '?') +
+            ' (' + (window.vpn_region ? 'ответ сервиса' : 'по умолчанию') + ')' +
+            ' | проверка хелпера: ' + (geoRegion || 'нет ответа');
+        console.log(TAG, text);
+        try { Lampa.Noty.show(text, {time: 15000}); } catch (e) { Lampa.Noty.show(text); }
+    }
+
     function probeRegion() {
         var Lampa = window.Lampa;
         var domain = Lampa.Manifest && Lampa.Manifest.cub_domain;
@@ -395,6 +411,7 @@
             if (index >= urls.length) {
                 geoFinished = true;
                 console.log(TAG, 'region unknown, RU/BY checks follow the user setting');
+                reportRegion();
                 return;
             }
             var xhr = new XMLHttpRequest();
@@ -421,6 +438,7 @@
                     geoRegion = code;
                     geoFinished = true;
                     console.log(TAG, 'region', code);
+                    reportRegion();
                 } else {
                     next();
                 }
