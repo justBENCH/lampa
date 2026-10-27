@@ -1,4 +1,4 @@
-/* Online Mod Direct Play v1.3.1
+/* Online Mod Direct Play v1.4.0
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -19,6 +19,9 @@
  *    outside debug mode). While the alternative proxy is set, it is switched
  *    back on right after that, otherwise every HDrezka request goes direct and
  *    fails with "no network connection".
+ * 6. Outside Android the alternative proxy itself is set on every start:
+ *    "Use alternative proxy" = on and the URL below. Online Mod also routes
+ *    Filmix site requests through it, so the proxy must allow filmix.gg.
  *
  * Uses Lampa's existing buttons; no provider or player overrides.
  */
@@ -85,6 +88,10 @@
     // rezka.ag and hdrezka.ag answer every URL, login included, with an Anubis
     // bot check; kvk.zone does not (checked 27.10.2026).
     var REZKA_MIRROR = 'kvk.zone';
+    // Our Deno Deploy proxy (nb557's deno_worker.js with a host allowlist).
+    // A Cloudflare Worker does not work: kvk.zone answers every film page
+    // requested from Cloudflare with an empty 500.
+    var OWN_PROXY_URL = 'https://weird-perch-5180.justbench.deno.net/';
     var REZKA_LOGIN = 'online_mod_rezka2_login';
     var REZKA_LOGOUT = 'online_mod_rezka2_logout';
     var REZKA_COOKIE = 'online_mod_rezka2_cookie';
@@ -123,11 +130,22 @@
         return url.charAt(url.length - 1) === '/' ? url : url + '/';
     }
 
-    function useOwnLogin() {
+    function isAndroid() {
         var Lampa = window.Lampa;
-        var android = Lampa.Platform && typeof Lampa.Platform.is === 'function' &&
-            Lampa.Platform.is('android');
-        return !android && !!ownProxy();
+        return !!(Lampa.Platform && typeof Lampa.Platform.is === 'function' &&
+            Lampa.Platform.is('android'));
+    }
+
+    function useOwnLogin() {
+        return !isAndroid() && !!ownProxy();
+    }
+
+    // Online Mod reads both values on every request, so writing them at start
+    // is enough. On Android its native login works without a proxy.
+    function forceOwnProxy() {
+        if (isAndroid()) return;
+        if (storage().field('online_mod_proxy_other') !== true) storage().set('online_mod_proxy_other', 'true');
+        if (storage().field('online_mod_proxy_other_url') !== OWN_PROXY_URL) storage().set('online_mod_proxy_other_url', OWN_PROXY_URL);
     }
 
     // Online Mod's proxyLink(link, proxy, enc, 'enc2t').
@@ -332,6 +350,7 @@
         });
         if (!login) return false;
 
+        forceOwnProxy();
         forceMirror();
         // Runs after Online Mod's initStorage(), which resets this flag.
         if (useOwnLogin()) storage().set('online_mod_proxy_rezka2', 'true');
