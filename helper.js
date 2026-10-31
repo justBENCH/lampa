@@ -1,4 +1,4 @@
-/* Online Mod Direct Play v1.7.1
+/* Lampa helper plugins v1.8.0
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -37,6 +37,7 @@
  *    adult_content_view = true, but Lampa only applies it to its own keyword
  *    check; films that TMDB itself marks adult keep the warning forever.
  *    After confirmation the helper clears that mark when the card starts.
+ * 9. Cards in viewing history open their full movie or series page directly.
  *
  * Uses Lampa's existing buttons; no provider or player overrides.
  */
@@ -44,6 +45,49 @@
     'use strict';
 
     var TAG = '[Online Mod Direct Play]';
+
+
+    function installHistoryDirectOpen() {
+        var Lampa = window.Lampa;
+        if (!Lampa || !Lampa.Listener || typeof Lampa.Listener.follow !== 'function' ||
+            !Lampa.Router || typeof Lampa.Router.call !== 'function') return false;
+
+        if (window.__LAMPA_HISTORY_DIRECT_OPEN_180__) return true;
+
+        Lampa.Listener.follow('activity', function (event) {
+            var params = event && event.object;
+            var activity = params && params.activity;
+
+            if (!event || event.type !== 'start' || !params ||
+                params.component !== 'favorite' || params.type !== 'history' ||
+                !activity || typeof activity.use !== 'function' || activity.historyDirectOpen) return;
+
+            activity.historyDirectOpen = true;
+            activity.use({
+                // The favorite component installs its regular action first.
+                // Replace it only for cards created in viewing history.
+                onInstance: function (item, data) {
+                    if (!item || !Array.isArray(item.components) ||
+                        typeof item.use !== 'function' || !data) return;
+
+                    item.components.forEach(function (component) {
+                        if (component && typeof component.onEnter === 'function') {
+                            component.onEnter = function () {};
+                        }
+                    });
+
+                    item.use({
+                        onEnter: function () {
+                            Lampa.Router.call('full', data);
+                        }
+                    });
+                }
+            });
+        });
+
+        window.__LAMPA_HISTORY_DIRECT_OPEN_180__ = true;
+        return true;
+    }
 
 
     function installDirectPlay() {
@@ -544,6 +588,7 @@
     }
 
     retry(installDirectPlay);
+    retry(installHistoryDirectOpen);
     retry(installRezkaLogin);
     retry(installRegionFix);
     retry(installAdultFix);

@@ -1,105 +1,52 @@
-# Lampa plugins
+# Lampa Helper
 
-Два независимых плагина для Lampa:
+A single Lampa plugin, [`helper.js`](helper.js) (version 1.8.0). It adds playback, viewing-history, region, age-confirmation, and Online Mod fixes.
 
-| Файл | Плагин | Версия |
-|---|---|---|
-| `helper.js` | Online Mod Direct Play (+ вход в HDrezka через свой прокси, фиксы региона и подтверждения возраста) | 1.7.1 |
-| `kp.js` | Рекомендации Кинопоиска | 1.6.4 |
+## Install
 
-## Установка (общая)
+1. Enable GitHub Pages in **Settings → Pages**. Select **Deploy from a branch**, then choose `main` and `/ (root)`.
+2. In Lampa, open **Settings → Extensions → Add plugin** and enter the direct HTTPS URL to `helper.js`:
 
-1. Включите GitHub Pages: **Settings → Pages → Deploy from a branch → main / (root)**.
-2. В Lampa откройте **Настройки → Расширения → Добавить плагин** и укажите прямую HTTPS-ссылку на нужный `.js`-файл, например `https://<пользователь>.github.io/lampa/helper.js`. Добавляется адрес самого файла, не страница репозитория.
-3. Перезагрузите Lampa.
+   ```text
+   https://justbench.github.io/lampa/helper.js
+   ```
 
-Настройка применяется в том браузере и на том адресе Lampa, где добавлен плагин. Для телевизора добавьте ссылку в его Lampa отдельно. Чтобы убрать плагин, удалите его из расширений и перезагрузите Lampa.
+3. Reload Lampa.
 
----
+Add the plugin separately in each browser or Lampa device where you want to use it. To remove it, delete it from Extensions and reload Lampa.
 
-## Online Mod Direct Play (`helper.js`)
+## Features
 
-Кнопка Play в карточке Lampa сразу открывает установленный Online Mod, пропуская меню «Источник». Рядом с Play расположена штатная кнопка «Трейлеры», открывающая список роликов Lampa. Она появляется только у карточек с доступными трейлерами. Выбор перевода, серии и качества внутри Online Mod работает как обычно.
+### Playback and trailers
 
-Online Mod устанавливается отдельно и должен оставаться установленным: https://nb557.github.io/plugins/online_mod.js
+- The Play button opens the installed Online Mod directly when its source is available and visible. Otherwise, Lampa shows its regular source menu.
+- Lampa's native Trailers button is moved next to Play, retaining its original handler.
+- Online Mod is a separate plugin and must remain installed: <https://nb557.github.io/plugins/online_mod.js>.
 
-### Поведение
+### Viewing history
 
-- Вызывает штатный обработчик Online Mod из меню источников, до отображения меню.
-- Узнаёт Online Mod по классу `view--online_mod`, а не по переведённому названию.
-- Остальные меню, включая меню внутри Online Mod, не меняются.
-- Если Online Mod отсутствует или скрыт, открывается обычное меню источников.
-- Если Lampa показывает отдельную приоритетную кнопку Online Mod и исключает её из меню Play, снимите приоритет долгим нажатием на эту отдельную кнопку.
-- Штатная кнопка трейлеров перемещается из меню источников непосредственно после Play с сохранением её обработчика.
-- Без настроенного альтернативного прокси плагин сам не делает сетевых запросов и не читает учётные данные. Про вход в HDrezka — в разделе ниже.
+Selecting a movie or series card in Lampa's viewing history opens its full page directly. This behavior was added in version 1.8.0 and has not yet been verified in a live Lampa session.
 
-### Совместимость и проверка
+### HDrezka login through a proxy
 
-Реализация сверена с исходниками `yumata/lampa-source` и `nb557/plugins/online_mod.js`, загруженными 14 сентября 2026 года. Использует `Lampa.Select.show`, `settings_rest_source` и поле `btn` элементов меню. Изменения этих интерфейсов в будущих версиях Lampa могут потребовать обновления.
+The helper adapts Online Mod's HDrezka login buttons for browsers and web views where a direct cross-origin login request is blocked. It uses Online Mod's alternative proxy, stores the session cookies through that proxy, and enables the HDrezka proxy after login. Logout clears the stored cookies and attempts to end the site session.
 
-Проверено в локальной веб-сборке на карточке «Хитрый койот»: без плагина Play открывает «Источник», с плагином сразу открывается Online Mod со списком переводов; список трейлеров открывается. Воспроизведение видео и работа на телевизоре не проверялись.
+On non-Android devices, the helper enables Online Mod's alternative proxy and sets its URL from `OWN_PROXY_URL` in `helper.js`. The HDrezka mirror is fixed to `kvk.zone`. Online Mod may also route Filmix requests through the alternative proxy, so a custom proxy must allow `filmix.gg` and `filmixapp.cyou` as well as the required HDrezka hosts. On Android, Online Mod's native login behavior is preserved.
 
-Код написан в синтаксисе ES5 для старых ТВ-браузеров; совместимость конкретного телевизора требует проверки на устройстве. Если API Lampa или настройки Online Mod ещё не готовы, плагин повторяет попытку установки (до 240 раз с интервалом 500 мс).
+To use a different proxy, update `OWN_PROXY_URL` and make sure the proxy is configured with a host allowlist. The helper does not provide or configure the proxy server itself. Online Mod's username and password are sent through the configured proxy to the selected mirror.
 
-### Вход в HDrezka через свой прокси (с версии 1.2.0)
+### Region handling
 
-Чинит вход в HDrezka в веб-версии Lampa, Media Station X и браузерах ТВ, где «Войти в HDrezka» пишет «Нет подключения к сети».
+Lampa falls back to the Russian region when its geo lookup fails or returns an invalid value. The helper checks the same geo service over HTTPS, then HTTP, and adjusts Lampa's RU/BY region checks using the result. If the lookup fails, those checks return false and Lampa's user settings determine the behavior. Other region checks are left unchanged.
 
-**Причины (проверено 27.10.2026).**
-- Online Mod отправляет вход прямым запросом со страницы на `<зеркало>/ajax/login/`, а сайт не разрешает такие межсайтовые запросы, и браузер блокирует ответ (CORS). Вход через прокси в Online Mod есть (кнопка «Заполнить куки для HDrezka»), но показывается только на Android.
-- `rezka.ag` и `hdrezka.ag` закрыты антибот-проверкой Anubis («Проверяем, что вы не бот!») на всех адресах, включая вход. Зеркало `kvk.zone` (зеркало Online Mod по умолчанию) проверки не показывает, вход на нём отвечает нормально.
+Outside RU/BY, the helper prevents Lampa's LGBT keyword and catalog-list checks from running unless **Block LGBT content** is enabled. It also restores that setting when Lampa hides it based on its region result.
 
-**Что делает.** Если в Online Mod задан альтернативный прокси, штатные кнопки «Войти в HDrezka» и «Выйти из HDrezka» работают через него, со штатной точкой статуса:
-- «Войти» входит через прокси, сохраняет куки сессии и включает в Online Mod прокси HDrezka с указанным зеркалом. Точка зелёная при успехе, красная при ошибке; при открытии настроек зелёная, если вход уже выполнен.
-- «Выйти» стирает сохранённые куки и пробует завершить сессию на сайте.
-- На Android и без альтернативного прокси кнопки работают как в Online Mod. Сторонние прокси не используются.
-- Online Mod при каждом запуске выключает свой прокси HDrezka; с версии 1.3.1 хелпер сразу включает его обратно, пока задан альтернативный прокси (иначе источник HDrezka пишет «Нет подключения к сети»).
-- С версии 1.4.0 вне Android хелпер при каждом запуске сам включает «Использовать альтернативный прокси» и подставляет наш прокси Deno (`https://weird-perch-5180.justbench.deno.net/`). Online Mod пускает через этот прокси и запросы к сайту Filmix, поэтому в списке разрешённых хостов прокси есть `filmix.gg` и `filmixapp.cyou`.
-- С версии 1.3.0 зеркало HDrezka зашито в хелпер: `kvk.zone`. Поле «Зеркало для HDrezka» убрано из настроек, значение выставляется при каждом запуске (Online Mod берёт его для всех запросов к HDrezka).
+### Adult-content confirmation
 
-**Настройка.**
-1. Свой прокси на **Deno Deploy**: код `deno_worker.js` из https://github.com/nb557/plugins с тремя доработками: список разрешённых хостов (`rezka.ag`, `hdrezka.ag`, `kvk.zone`, `filmix.gg`, `filmixapp.cyou` и переменная окружения `ALLOWED_HOSTS`), чтобы прокси не был открытым; быстрый поиск `/engine/ajax/search.php` отдаётся из полной страницы поиска, потому что на `kvk.zone` быстрый поиск возвращает случайный тайтл; заголовок `Accept-Encoding` клиента не передаётся (Deno распаковывает только то сжатие, которое выбрал сам; `zstd` от браузера пришёл бы сжатым), а из ответа убираются `Content-Encoding` и `Content-Length`, потому что тело уже распаковано. Cloudflare Worker не подходит: через него `kvk.zone` отдаёт пустой 500 на всех страницах фильмов (главная и поиск при этом работают).
-2. Адрес прокси зашит в `helper.js` (`OWN_PROXY_URL`); вне Android хелпер сам включает его в Online Mod. Для своего прокси поменяйте эту строку.
-3. Online Mod → HDrezka: логин и пароль, затем «Войти в HDrezka» и перезапуск Lampa.
+After **I am 18 or older** is confirmed (`adult_content_view = true`), the helper clears TMDB's `adult` flag when the full card starts. This removes the adult-content warning and poster badge that Lampa's keyword-only confirmation does not clear.
 
-**Важно.** Логин и пароль уходят только на ваш Worker, а с него на зеркало. Плагин ничего не пишет в лог. Если прокси получит отказ, Online Mod сам выключит прокси HDrezka, и вход придётся повторить.
+## Compatibility and verification
 
-**Откат.** «Выйти из HDrezka», затем выключите прокси HDrezka и альтернативный прокси в настройках Online Mod.
+The code uses ES5 syntax for older TV browsers and retries installation while Lampa APIs and Online Mod settings become available. Changes to those APIs may require updates.
 
-### Фикс определения региона (с версии 1.5.0)
-
-Lampa узнаёт страну у `geo.<cub_domain>` (сейчас `http://geo.cub.best`). Если запрос не прошёл или вернул не двухбуквенный код, Lampa считает регион российским. Тогда срабатывает её ЛГБТ-блокировка (`Lampa.VPN.is(['ru', 'by'])`): фильмы закрываются экраном «Контент ограничен» даже при настройке «разрешать». Так было на iPhone в Media Station X, а в веб-версии регион определялся правильно.
-
-Хелпер сам спрашивает тот же сервис (сначала https, потом http) и отвечает на проверки RU/BY по полученному коду. Если регион определить не удалось, проверки RU/BY отвечают «нет», и решает настройка пользователя. Если сервис действительно вернул RU или BY, поведение Lampa не меняется. Остальные вызовы `Lampa.VPN.is` не затрагиваются.
-
-С версии 1.7.0 хелпер ещё и прячет список ЛГБТ-фильмов Lampa (`window.lampa_settings.lgbt`), пока регион по его проверке не RU/BY и пользователь сам не включил «Блокировать ЛГБТ контент»: обе проверки Lampa (по ключевым словам и по списку cub) работают только при загруженном списке. Переключатель «Блокировать ЛГБТ контент», который Lampa скрывает при регионе RU/BY, хелпер возвращает в настройки (раздел «Ещё»).
-
-### Подтверждение возраста (с версии 1.6.0)
-
-Кнопка «Мне 18 лет или больше» сохраняет `adult_content_view = true`, но Lampa учитывает это только в своей проверке по ключевым словам. Если фильм помечен как «для взрослых» в самом TMDB (`adult: true`), плашка «Взрослый контент» остаётся и после подтверждения. Хелпер после подтверждения снимает эту пометку при открытии карточки, до построения описания. Вместе с плашкой пропадает и метка ADULT на постере. Вернуть проверку можно, выключив `adult_content_view` в настройках Lampa.
-
----
-
-## Рекомендации Кинопоиска (`kp.js`)
-
-Добавляет в полную карточку фильма или сериала строку «Рекомендации Кинопоиска» сразу после штатной строки «Рекомендации». Список берётся из блока «Похожие» на Кинопоиске.
-
-### Как работает
-
-1. При открытии карточки плагин подгружает источник KP — `https://nb557.github.io/plugins/kp_source.js` (если он ещё не загружен).
-2. Ищет фильм на Кинопоиске по названию карточки; при нескольких совпадениях предпочитает точное совпадение названия и года, иначе берёт первый результат.
-3. Запрашивает похожие тайтлы и показывает их строкой карточек. Нажатие открывает карточку тайтла, при фокусе меняется фон.
-4. Строка вставляется, когда Lampa построила штатную строку «Рекомендации» (на ТВ нижние строки подгружаются лениво).
-
-### Ограничения
-
-- Плагин зависит от внешнего `kp_source.js` и от сервисов, к которым тот обращается; при их недоступности строка не появится (причина пишется в консоль с префиксом `[KP recommendations]`).
-- Якорем служит строка с названием «Рекомендации»; при другом языке интерфейса Lampa плагин строку не найдёт.
-- Поиск идёт по названию, поэтому для редких названий или тёзок возможно неверное совпадение.
-- Работа на телевизоре не описана как проверенная.
-
----
-
----
-
-Исходники, с которыми сверялись плагины: https://github.com/yumata/lampa-source и https://github.com/nb557/plugins
+The Online Mod Play-menu and Trailers behavior was previously checked in a local web build. The viewing-history change in version 1.8.0 has not been tested in Lampa. TV-device compatibility and actual video playback have not been verified.
