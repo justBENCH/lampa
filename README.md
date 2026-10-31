@@ -1,6 +1,6 @@
 # Lampa Helper
 
-A single Lampa plugin, [`helper.js`](helper.js) (version 1.8.0). It adds playback, viewing-history, region, age-confirmation, and Online Mod fixes.
+A single Lampa plugin, [`helper.js`](helper.js) (version 1.8.1). It adds playback, viewing-history, region, age-confirmation, and Online Mod fixes.
 
 ## Install
 
@@ -25,7 +25,7 @@ Add the plugin separately in each browser or Lampa device where you want to use 
 
 ### Viewing history
 
-Selecting a movie or series card in Lampa's viewing history opens its full page directly. This behavior was added in version 1.8.0 and has not yet been verified in a live Lampa session.
+Selecting a movie or series card in Lampa's viewing history opens its full page directly instead of opening the per-day viewing-history panel. This behavior was added in version 1.8.0 and updated in 1.8.1 to cover Lampa's synchronized history screen. It has not yet been verified in a live Lampa session.
 
 ### HDrezka login through a proxy
 
@@ -49,4 +49,4 @@ After **I am 18 or older** is confirmed (`adult_content_view = true`), the helpe
 
 The code uses ES5 syntax for older TV browsers and retries installation while Lampa APIs and Online Mod settings become available. Changes to those APIs may require updates.
 
-The Online Mod Play-menu and Trailers behavior was previously checked in a local web build. The viewing-history change in version 1.8.0 has not been tested in Lampa. TV-device compatibility and actual video playback have not been verified.
+The Online Mod Play-menu and Trailers behavior was previously checked in a local web build. The viewing-history handling, including the 1.8.1 synchronized-history fix, has not been tested in Lampa. TV-device compatibility and actual video playback have not been verified.

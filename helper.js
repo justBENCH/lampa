@@ -1,4 +1,4 @@
-/* Lampa helper plugins v1.8.0
+/* Lampa helper plugins v1.8.1
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -52,14 +52,16 @@
         if (!Lampa || !Lampa.Listener || typeof Lampa.Listener.follow !== 'function' ||
             !Lampa.Router || typeof Lampa.Router.call !== 'function') return false;
 
-        if (window.__LAMPA_HISTORY_DIRECT_OPEN_180__) return true;
+        if (window.__LAMPA_HISTORY_DIRECT_OPEN_181__) return true;
 
         Lampa.Listener.follow('activity', function (event) {
             var params = event && event.object;
             var activity = params && params.activity;
 
-            if (!event || event.type !== 'start' || !params ||
-                params.component !== 'favorite' || params.type !== 'history' ||
+            var isHistory = params && (params.component === 'watch_history' ||
+                (params.component === 'favorite' && params.type === 'history'));
+
+            if (!event || event.type !== 'start' || !isHistory ||
                 !activity || typeof activity.use !== 'function' || activity.historyDirectOpen) return;
 
             activity.historyDirectOpen = true;
@@ -85,7 +87,7 @@
             });
         });
 
-        window.__LAMPA_HISTORY_DIRECT_OPEN_180__ = true;
+        window.__LAMPA_HISTORY_DIRECT_OPEN_181__ = true;
         return true;
     }
 

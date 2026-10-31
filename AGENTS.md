@@ -6,6 +6,40 @@ This repository contains a browser-compatible Lampa plugin. The main plugin is `
 
 `README.md` is the user-facing English installation and behavior guide. Keep it aligned with the actual plugin behavior and state clearly when a feature has not been verified in a live Lampa session.
 
+## Understanding Lampa
+
+This repository is an external plugin, not the Lampa application source. The app's runtime API is exposed through `window.Lampa`; plugins are injected as standalone scripts. For Lampa internals, use the upstream source and its plugin-development guide:
+
+- Source: <https://github.com/yumata/lampa-source>
+- English plugin guide: <https://github.com/yumata/lampa-source/tree/main/docs/en>
+- Russian plugin guide: <https://github.com/yumata/lampa-source/tree/main/docs/ru>
+
+Read the relevant guide and inspect the corresponding implementation before relying on an API. Start with these paths when tracing behavior:
+
+- App startup and plugin readiness: `src/app.js`, `docs/en/01-getting-started.md`, `docs/en/02-lifecycle.md`.
+- Global events and subscriptions: `src/utils/subscribe.js`, `src/services/events.js`, `src/app.js`, `docs/en/03-events.md`.
+- Navigation, activities, registered components, and routes: `src/interaction/activity/activity.js`, `src/core/router.js`, `src/core/component.js`, `docs/en/07-navigation.md`.
+- Full movie/series page: `src/components/full.js`, `src/components/full/`.
+- Favorite and viewing-history lists: `src/components/favorite.js`, `src/components/watch_history.js`, `src/interaction/items/category/`, and `src/interaction/card/module/history.js`.
+- Card instances and their interaction: `src/interaction/card.js`, `src/interaction/card/`, `src/interaction/items/category/module/`.
+- Source selector and dialogs: `src/interaction/select.js`, `docs/en/06-ui-components.md`.
+- Settings registration: `src/interaction/settings/`, `docs/en/08-settings.md`.
+- Common integration failures: `docs/en/11-pitfalls.md`.
+
+The upstream tree changes over time and may be newer than the Lampa build used by a user. Check the target app/build where possible; do not assume that the upstream `main` branch exactly matches a deployed Lampa instance. Older source snapshots elsewhere on the machine are historical evidence, not the authority for current API behavior.
+
+### Investigation workflow
+
+For a Lampa behavior change:
+
+1. Identify the user-visible screen and the action that triggers it (focus, enter/click, back, playback, or settings change).
+2. Trace that action through the source: route/activity → component creation → card or UI instance → callback/event → resulting route or state change.
+3. Verify the exact event payload, callback order, and public API in current upstream source and the relevant guide. If app/build version matters, verify against the user's actual Lampa build before treating the behavior as certain.
+4. Implement the smallest plugin-side hook that covers only the requested screen and action. Preserve normal behavior elsewhere and avoid replacing broad global handlers when a scoped component hook exists.
+5. Update `README.md` and this file when the feature map, API references, or verification status changes.
+
+Lampa's UI uses its own focus/navigation system, including jQuery custom events such as `hover:enter` and `hover:focus`. Do not assume native DOM click handlers or desktop-only keyboard behavior are sufficient for TV remotes. Check the controller/focus guidance in `docs/en/13-controller.md` when changing navigation.
+
 ## Files
 
 - `helper.js` — the plugin implementation.
@@ -13,15 +47,35 @@ This repository contains a browser-compatible Lampa plugin. The main plugin is `
 - `LICENSE` — repository license; preserve it.
 - `AGENTS.md` — project instructions for coding agents.
 - `CLAUDE.md` — Claude Code entry point that imports these instructions.
+- `.gitignore` — excludes local IDE metadata in `.idea/`.
 
 The former `kp.js` Kinopoisk plugin was intentionally removed. Do not restore it unless the user requests it. This is not an npm project: do not add a package manifest, placeholder `index.js`, build system, or dependencies without a concrete need and user request.
+
+## Navigating this repository
+
+There is one runtime entry point: `helper.js`. It is a self-executing IIFE loaded directly by Lampa. There is no bundling, transpilation, module loader, package manager, or generated output. Make runtime changes in `helper.js`; do not create another plugin file or split the script unless the user asks or a concrete need justifies it. `README.md` describes what users install; `AGENTS.md` describes how agents should work; `CLAUDE.md` imports this file for Claude Code.
+
+The implementation is organized in this order:
+
+1. `installHistoryDirectOpen()` — viewing-history card entry behavior. It listens for the `activity` event and scopes its handler to the current `watch_history` component and the legacy `favorite` component with `type === 'history'`.
+2. `installDirectPlay()` — Online Mod detection and Play/Trailers button behavior on the full-card page.
+3. HDrezka proxy section — constants (`REZKA_*`, `OWN_PROXY_URL`, `USER_AGENT`), storage/request/cookie helpers, login/logout flows, settings-button patching, and `installRezkaLogin()`.
+4. Region fallback section — geo request (`probeRegion()`), LGBT list guard and toggle helpers, and `installRegionFix()`.
+5. Adult-content section — `installAdultFix()` listens to full-page start and handles TMDB's `adult` flag.
+6. Startup section — `retry()` installs each feature independently, retrying every 500 ms for up to 240 attempts. Keep installers independent so a missing optional API does not prevent other features from loading.
+
+Useful landmarks are function names rather than line numbers; line numbers move as the plugin changes. Search with `rg -n '^    function |^    var [A-Z_]+ =' helper.js` to get the current map. The Online Mod storage keys and request conventions are defined next to the HDrezka helpers; read those definitions before changing login behavior.
+
+The remote repository is <https://github.com/justBENCH/lampa>. GitHub Pages currently publishes the root of `main` at <https://justbench.github.io/lampa/>; check the live Pages settings/build before relying on this deployment state. The installable plugin URL is <https://justbench.github.io/lampa/helper.js>.
+
+Before editing, inspect `git status` and preserve unrelated user changes. After editing, review the complete diff for the touched files. Avoid committing local `.idea` metadata. Pushing or deployment requires an explicit user request.
 
 ## Plugin behavior map
 
 `helper.js` is an ES5-style IIFE and installs independent features with retry loops:
 
 - `installDirectPlay()` — wraps Lampa's source selector to open the visible Online Mod source directly and moves Lampa's native Trailers button next to Play.
-- `installHistoryDirectOpen()` — intercepts card entry only in the `favorite` activity with type `history`, routing the selected card to its full page. This feature has not been confirmed in a live Lampa session; do not describe it as verified until it is tested there.
+- `installHistoryDirectOpen()` — intercepts card entry in the current synchronized `watch_history` activity and the legacy `favorite` activity with type `history`, routing the selected card to its full page. This feature has not been confirmed in a live Lampa session; do not describe it as verified until it is tested there.
 - `installRezkaLogin()` and helpers — adapts Online Mod's HDrezka login/logout to its alternative proxy, fixes the mirror to `kvk.zone`, and configures `OWN_PROXY_URL` on non-Android platforms.
 - `installRegionFix()` — adjusts RU/BY region checks based on the geo lookup and manages the LGBT content toggle/list behavior.
 - `installAdultFix()` — clears TMDB's `adult` flag on full-card start after the user has confirmed adult content in Lampa settings.
