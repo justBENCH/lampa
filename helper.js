@@ -1,4 +1,4 @@
-/* Lampa helper plugins v1.8.3
+/* Lampa helper plugins v1.8.4
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -45,21 +45,44 @@
     'use strict';
 
     var TAG = '[Online Mod Direct Play]';
+    var HISTORY_DEBUG_TAG = '[Lampa History Debug]';
+
+    function historyDebug(message, details) {
+        if (typeof console === 'undefined' || typeof console.log !== 'function') return;
+        if (typeof details === 'undefined') console.log(HISTORY_DEBUG_TAG, message);
+        else console.log(HISTORY_DEBUG_TAG, message, details);
+    }
 
 
     function patchHistoryCard(item, data, Lampa) {
-        if (!item || !Array.isArray(item.components) || typeof item.use !== 'function' ||
-            !data || item.historyDirectOpen) return;
+        if (!item) {
+            historyDebug('Card hook received no item');
+            return;
+        }
+        if (!Array.isArray(item.components) || typeof item.use !== 'function' || !data) {
+            historyDebug('Card hook skipped: required item fields are missing', {
+                hasComponents: Array.isArray(item.components),
+                hasUse: typeof item.use === 'function',
+                hasData: Boolean(data)
+            });
+            return;
+        }
+        if (item.historyDirectOpen) return;
 
         item.historyDirectOpen = true;
+        var title = data.name || data.title || data.original_name || data.original_title || '';
+        var replaced = 0;
         item.components.forEach(function (component) {
             if (component && typeof component.onEnter === 'function') {
                 component.onEnter = function () {};
+                replaced++;
             }
         });
+        historyDebug('Card patched', {title: title, replacedHandlers: replaced});
 
         item.use({
             onEnter: function () {
+                historyDebug('Card entered; routing to full page', {title: title, id: data.id});
                 Lampa.Router.call('full', data);
             }
         });
@@ -71,13 +94,27 @@
         var isHistory = params && (params.component === 'watch_history' ||
             (params.component === 'favorite' && params.type === 'history'));
 
-        if (!isHistory || !activity || typeof activity.use !== 'function') return;
+        if (!isHistory) return;
+        historyDebug('History activity detected', {
+            component: params.component,
+            type: params.type,
+            hasActivity: Boolean(activity),
+            hasUse: Boolean(activity && typeof activity.use === 'function'),
+            itemCount: activity && Array.isArray(activity.items) ? activity.items.length : null
+        });
+        if (!activity || typeof activity.use !== 'function') {
+            historyDebug('History component is unavailable or has no use()');
+            return;
+        }
 
         if (!activity.historyDirectOpen) {
             activity.historyDirectOpen = true;
             activity.use({
                 // Attach before the history list loads whenever possible.
                 onInstance: function (item, data) {
+                    historyDebug('History component created a card', {
+                        title: data && (data.name || data.title || data.original_name || data.original_title || '')
+                    });
                     patchHistoryCard(item, data, Lampa);
                 }
             });
@@ -96,10 +133,14 @@
         if (!Lampa || !Lampa.Listener || typeof Lampa.Listener.follow !== 'function' ||
             !Lampa.Router || typeof Lampa.Router.call !== 'function') return false;
 
-        if (window.__LAMPA_HISTORY_DIRECT_OPEN_183__) return true;
+        if (window.__LAMPA_HISTORY_DIRECT_OPEN_184__) return true;
 
         Lampa.Listener.follow('activity', function (event) {
             if (event && (event.type === 'init' || event.type === 'create' || event.type === 'start')) {
+                if (event.object && (event.object.component === 'watch_history' ||
+                    (event.object.component === 'favorite' && event.object.type === 'history'))) {
+                    historyDebug('Activity event', {type: event.type, component: event.object.component});
+                }
                 patchHistoryActivity(event.object, Lampa);
             }
         });
@@ -109,7 +150,8 @@
             patchHistoryActivity(Lampa.Activity.active(), Lampa);
         }
 
-        window.__LAMPA_HISTORY_DIRECT_OPEN_183__ = true;
+        historyDebug('History hooks installed');
+        window.__LAMPA_HISTORY_DIRECT_OPEN_184__ = true;
         return true;
     }
 
