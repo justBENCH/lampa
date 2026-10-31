@@ -75,7 +75,7 @@ Before editing, inspect `git status` and preserve unrelated user changes. After 
 `helper.js` is an ES5-style IIFE and installs independent features with retry loops:
 
 - `installDirectPlay()` — wraps Lampa's source selector to open the visible Online Mod source directly and moves Lampa's native Trailers button next to Play.
-- `installHistoryDirectOpen()` — intercepts card entry in the current synchronized `watch_history` activity and the legacy `favorite` activity with type `history`, routing the selected card to its full page. It also patches cards if the plugin loads after the history screen. This feature has not been confirmed after the latest fix in a live Lampa session; do not describe it as verified until it is tested there.
+- `installHistoryDirectOpen()` — intercepts card entry in the synchronized `watch_history` activity and legacy `favorite` history, routing the selected card to its full page. Lampa's `params.activity` is an `ActivitySlide`; the component emitter and its items are at `params.activity.component`.
 - `installRezkaLogin()` and helpers — adapts Online Mod's HDrezka login/logout to its alternative proxy, fixes the mirror to `kvk.zone`, and configures `OWN_PROXY_URL` on non-Android platforms.
 - `installRegionFix()` — adjusts RU/BY region checks based on the geo lookup and manages the LGBT content toggle/list behavior.
 - `installAdultFix()` — clears TMDB's `adult` flag on full-card start after the user has confirmed adult content in Lampa settings.

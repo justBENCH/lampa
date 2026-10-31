@@ -1,4 +1,4 @@
-/* Lampa helper plugins v1.8.2
+/* Lampa helper plugins v1.8.3
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -66,7 +66,8 @@
     }
 
     function patchHistoryActivity(params, Lampa) {
-        var activity = params && params.activity;
+        // activity is an ActivitySlide; the component emitter owns use() and items.
+        var activity = params && params.activity && params.activity.component;
         var isHistory = params && (params.component === 'watch_history' ||
             (params.component === 'favorite' && params.type === 'history'));
 
@@ -95,7 +96,7 @@
         if (!Lampa || !Lampa.Listener || typeof Lampa.Listener.follow !== 'function' ||
             !Lampa.Router || typeof Lampa.Router.call !== 'function') return false;
 
-        if (window.__LAMPA_HISTORY_DIRECT_OPEN_182__) return true;
+        if (window.__LAMPA_HISTORY_DIRECT_OPEN_183__) return true;
 
         Lampa.Listener.follow('activity', function (event) {
             if (event && (event.type === 'init' || event.type === 'create' || event.type === 'start')) {
@@ -108,7 +109,7 @@
             patchHistoryActivity(Lampa.Activity.active(), Lampa);
         }
 
-        window.__LAMPA_HISTORY_DIRECT_OPEN_182__ = true;
+        window.__LAMPA_HISTORY_DIRECT_OPEN_183__ = true;
         return true;
     }
 

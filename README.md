@@ -1,6 +1,6 @@
 # Lampa Helper
 
-A single Lampa plugin, [`helper.js`](helper.js) (version 1.8.2). It adds playback, viewing-history, region, age-confirmation, and Online Mod fixes.
+A single Lampa plugin, [`helper.js`](helper.js) (version 1.8.3). It adds playback, viewing-history, region, age-confirmation, and Online Mod fixes.
 
 ## Install
 
@@ -8,7 +8,7 @@ A single Lampa plugin, [`helper.js`](helper.js) (version 1.8.2). It adds playbac
 2. In Lampa, open **Settings → Extensions → Add plugin** and enter the direct HTTPS URL to `helper.js`:
 
    ```text
-   https://justbench.github.io/lampa/helper.js
+   https://justbench.github.io/lampa/helper.js?v=5
    ```
 
 3. Reload Lampa.
