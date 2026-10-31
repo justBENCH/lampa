@@ -1,4 +1,4 @@
-/* Lampa helper plugins v1.8.1
+/* Lampa helper plugins v1.8.2
  * Install alongside https://nb557.github.io/plugins/online_mod.js
  *
  * 1. Play opens Online Mod directly, skipping the "Source" menu.
@@ -47,47 +47,68 @@
     var TAG = '[Online Mod Direct Play]';
 
 
+    function patchHistoryCard(item, data, Lampa) {
+        if (!item || !Array.isArray(item.components) || typeof item.use !== 'function' ||
+            !data || item.historyDirectOpen) return;
+
+        item.historyDirectOpen = true;
+        item.components.forEach(function (component) {
+            if (component && typeof component.onEnter === 'function') {
+                component.onEnter = function () {};
+            }
+        });
+
+        item.use({
+            onEnter: function () {
+                Lampa.Router.call('full', data);
+            }
+        });
+    }
+
+    function patchHistoryActivity(params, Lampa) {
+        var activity = params && params.activity;
+        var isHistory = params && (params.component === 'watch_history' ||
+            (params.component === 'favorite' && params.type === 'history'));
+
+        if (!isHistory || !activity || typeof activity.use !== 'function') return;
+
+        if (!activity.historyDirectOpen) {
+            activity.historyDirectOpen = true;
+            activity.use({
+                // Attach before the history list loads whenever possible.
+                onInstance: function (item, data) {
+                    patchHistoryCard(item, data, Lampa);
+                }
+            });
+        }
+
+        // The plugin may load after the initial activity has already built its cards.
+        if (Array.isArray(activity.items)) {
+            activity.items.forEach(function (item) {
+                patchHistoryCard(item, item && item.data, Lampa);
+            });
+        }
+    }
+
     function installHistoryDirectOpen() {
         var Lampa = window.Lampa;
         if (!Lampa || !Lampa.Listener || typeof Lampa.Listener.follow !== 'function' ||
             !Lampa.Router || typeof Lampa.Router.call !== 'function') return false;
 
-        if (window.__LAMPA_HISTORY_DIRECT_OPEN_181__) return true;
+        if (window.__LAMPA_HISTORY_DIRECT_OPEN_182__) return true;
 
         Lampa.Listener.follow('activity', function (event) {
-            var params = event && event.object;
-            var activity = params && params.activity;
-
-            var isHistory = params && (params.component === 'watch_history' ||
-                (params.component === 'favorite' && params.type === 'history'));
-
-            if (!event || event.type !== 'start' || !isHistory ||
-                !activity || typeof activity.use !== 'function' || activity.historyDirectOpen) return;
-
-            activity.historyDirectOpen = true;
-            activity.use({
-                // The favorite component installs its regular action first.
-                // Replace it only for cards created in viewing history.
-                onInstance: function (item, data) {
-                    if (!item || !Array.isArray(item.components) ||
-                        typeof item.use !== 'function' || !data) return;
-
-                    item.components.forEach(function (component) {
-                        if (component && typeof component.onEnter === 'function') {
-                            component.onEnter = function () {};
-                        }
-                    });
-
-                    item.use({
-                        onEnter: function () {
-                            Lampa.Router.call('full', data);
-                        }
-                    });
-                }
-            });
+            if (event && (event.type === 'init' || event.type === 'create' || event.type === 'start')) {
+                patchHistoryActivity(event.object, Lampa);
+            }
         });
 
-        window.__LAMPA_HISTORY_DIRECT_OPEN_181__ = true;
+        // Also cover a history activity that was opened before this plugin finished loading.
+        if (Lampa.Activity && typeof Lampa.Activity.active === 'function') {
+            patchHistoryActivity(Lampa.Activity.active(), Lampa);
+        }
+
+        window.__LAMPA_HISTORY_DIRECT_OPEN_182__ = true;
         return true;
     }
 

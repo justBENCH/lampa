@@ -57,7 +57,7 @@ There is one runtime entry point: `helper.js`. It is a self-executing IIFE loade
 
 The implementation is organized in this order:
 
-1. `installHistoryDirectOpen()` — viewing-history card entry behavior. It listens for the `activity` event and scopes its handler to the current `watch_history` component and the legacy `favorite` component with `type === 'history'`.
+1. `installHistoryDirectOpen()` — viewing-history card entry behavior. It hooks history activities at `init` (and handles an already-open activity), scoped to `watch_history` and legacy `favorite` with `type === 'history'`.
 2. `installDirectPlay()` — Online Mod detection and Play/Trailers button behavior on the full-card page.
 3. HDrezka proxy section — constants (`REZKA_*`, `OWN_PROXY_URL`, `USER_AGENT`), storage/request/cookie helpers, login/logout flows, settings-button patching, and `installRezkaLogin()`.
 4. Region fallback section — geo request (`probeRegion()`), LGBT list guard and toggle helpers, and `installRegionFix()`.
@@ -75,7 +75,7 @@ Before editing, inspect `git status` and preserve unrelated user changes. After 
 `helper.js` is an ES5-style IIFE and installs independent features with retry loops:
 
 - `installDirectPlay()` — wraps Lampa's source selector to open the visible Online Mod source directly and moves Lampa's native Trailers button next to Play.
-- `installHistoryDirectOpen()` — intercepts card entry in the current synchronized `watch_history` activity and the legacy `favorite` activity with type `history`, routing the selected card to its full page. This feature has not been confirmed in a live Lampa session; do not describe it as verified until it is tested there.
+- `installHistoryDirectOpen()` — intercepts card entry in the current synchronized `watch_history` activity and the legacy `favorite` activity with type `history`, routing the selected card to its full page. It also patches cards if the plugin loads after the history screen. This feature has not been confirmed after the latest fix in a live Lampa session; do not describe it as verified until it is tested there.
 - `installRezkaLogin()` and helpers — adapts Online Mod's HDrezka login/logout to its alternative proxy, fixes the mirror to `kvk.zone`, and configures `OWN_PROXY_URL` on non-Android platforms.
 - `installRegionFix()` — adjusts RU/BY region checks based on the geo lookup and manages the LGBT content toggle/list behavior.
 - `installAdultFix()` — clears TMDB's `adult` flag on full-card start after the user has confirmed adult content in Lampa settings.
